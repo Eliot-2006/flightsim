@@ -1,0 +1,79 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, cc: gcc-13, cxx: g++-13, preset: dev}
+          - {os: ubuntu-24.04, cc: gcc-13, cxx: g++-13, preset: release}
+          - {os: ubuntu-24.04, cc: clang-18, cxx: clang++-18, preset: dev}
+          - {os: ubuntu-24.04, cc: clang-18, cxx: clang++-18, preset: release}
+          - {os: macos-14, cc: clang, cxx: clang++, preset: release}
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ninja
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update && sudo apt-get install -y ninja-build; else brew install ninja; fi
+      - uses: actions/cache@v4
+        with:
+          path: build/${{ matrix.preset }}/_deps
+          key: deps-${{ matrix.os }}-${{ matrix.cc }}-${{ matrix.preset }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - run: cmake --preset ${{ matrix.preset }}
+      - run: cmake --build --preset ${{ matrix.preset }} -j
+      - run: ctest --preset ${{ matrix.preset }}
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        with:
+          path: build/asan/_deps
+          key: deps-asan-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - run: cmake --preset asan
+      - run: cmake --build --preset asan -j
+      - run: ctest --preset asan
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - run: find src apps tests bench -name '*.cpp' -o -name '*.hpp' | xargs clang-format-18 --dry-run --Werror
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: cd python && uv sync --frozen && uv run pytest
+
+  bench:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        with:
+          path: build/release/_deps
+          key: deps-bench-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - run: cmake --preset release
+      - run: cmake --build --preset release -j
+      - run: build/release/bench_flightsim --benchmark_min_time=0.05s --benchmark_out=bench.json --benchmark_out_format=json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-json
+          path: bench.json
