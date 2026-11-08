@@ -51,6 +51,7 @@ add_executable(unit_tests
   tests/unit/test_frames.cpp
   tests/unit/test_rigid_body.cpp
   tests/unit/test_integrators.cpp
+  tests/unit/test_lie_integrators.cpp
   tests/unit/test_scenario.cpp
   tests/unit/test_runner.cpp)
 target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
