@@ -26,11 +26,16 @@ add_library(flightsim_core STATIC
   src/flightsim/core/forces.cpp
   src/flightsim/validation/analytic.cpp
   src/flightsim/validation/cases.cpp
-  src/flightsim/validation/convergence.cpp)
+  src/flightsim/validation/convergence.cpp
+  src/flightsim/sim/scenario.cpp
+  src/flightsim/sim/runner.cpp
+  src/flightsim/sim/output.cpp)
 target_include_directories(flightsim_core PUBLIC src)
 target_link_libraries(flightsim_core PUBLIC Eigen3::Eigen tomlplusplus::tomlplusplus)
 target_compile_definitions(flightsim_core PRIVATE
-  FLIGHTSIM_VERSION="${PROJECT_VERSION}" FLIGHTSIM_GIT_SHA="${FLIGHTSIM_GIT_SHA}")
+  FLIGHTSIM_VERSION="${PROJECT_VERSION}" FLIGHTSIM_GIT_SHA="${FLIGHTSIM_GIT_SHA}"
+  FLIGHTSIM_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+  FLIGHTSIM_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 flightsim_target_options(flightsim_core)
 
 add_executable(flightsim apps/flightsim.cpp)
@@ -45,9 +50,12 @@ add_executable(unit_tests
   tests/unit/test_quat.cpp
   tests/unit/test_frames.cpp
   tests/unit/test_rigid_body.cpp
-  tests/unit/test_integrators.cpp)
+  tests/unit/test_integrators.cpp
+  tests/unit/test_scenario.cpp
+  tests/unit/test_runner.cpp)
 target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(unit_tests)
+target_compile_definitions(unit_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 
 add_executable(validation_tests

@@ -1,0 +1,20 @@
+# R4 (PRD 8.3): intermediate-axis (Dzhanibekov) flip. Spin about the middle principal axis with a 1e-3 rad/s
+# perturbation is unstable (L1: positive real eigenvalue); omega_2 changes sign while E and H_N stay constant.
+[sim]
+integrator = "rk4"
+dt_s = 0.001
+t_final_s = 60.0
+output_every = 10
+
+[body]
+mass_kg = 1.0
+inertia_kgm2 = [[1.0, 0, 0], [0, 2.0, 0], [0, 0, 3.0]]
+
+[initial]
+position_m = [0, 0, 0]
+velocity_mps = [0, 0, 0]
+euler_deg = [0, 0, 0]
+omega_radps = [1e-3, 1.0, 1e-3]
+
+[environment]
+gravity_mps2 = 0.0

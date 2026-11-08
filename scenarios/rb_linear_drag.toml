@@ -1,0 +1,24 @@
+# T2 (PRD 8.2): point-like body with 3D linear drag under gravity, RK4.
+# Closed form: v(t) = v_inf + (v0 - v_inf) exp(-c t / m), v_inf = m g / c. Same parameters as validation case T2.
+[sim]
+integrator = "rk4"      # euler | rk4 | symplectic_euler | lie_euler | rkmk4
+dt_s = 0.01
+t_final_s = 5.0
+output_every = 5
+
+[body]
+mass_kg = 2.0
+inertia_kgm2 = [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]]
+
+[initial]
+position_m = [0, 0, 0]
+velocity_mps = [10, -5, -20]
+euler_deg = [0, 0, 0]
+omega_radps = [0, 0, 0]
+
+[environment]
+gravity_mps2 = 9.80665
+
+[[forces]]
+type = "linear_drag"
+c_kgps = 0.5            # F_N = -c v_N  [N s/m = kg/s]
