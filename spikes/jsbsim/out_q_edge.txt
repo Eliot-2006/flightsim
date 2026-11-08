@@ -1,0 +1,6 @@
+table edge: alpha=-0.10 -> 0.0000
+table edge: alpha=+0.00 -> 0.0043
+table edge: alpha=+0.15 -> 2.4728
+table edge: alpha=+0.20 -> 3.9597
+table edge: alpha=+0.30 -> 4.0000
+table edge: alpha=+0.50 -> 4.0000

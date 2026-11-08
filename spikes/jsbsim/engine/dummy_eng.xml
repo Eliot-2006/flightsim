@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!-- dummy zero-power engine; exists only so the engine owns fcs/throttle-cmd-norm[0] for FGTrim -->
+<electric_engine name="dummy">
+  <power unit="WATTS">0</power>
+</electric_engine>

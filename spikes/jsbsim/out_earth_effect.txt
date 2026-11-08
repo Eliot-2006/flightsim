@@ -1,0 +1,16 @@
+== lat=0.0 psi=0.0: T=20.0s dt=1/240; default final h=4990.262 lat=0.027399 lon=0.000000 g=32.18343
+   zero-rot+gm0 minus default: dh_ft=-7.8271 dnorth_ft=+3.3382 deast_ft=-0.0024 dtheta_deg=-0.0679 dpsi_deg=-360.0000 dphi_deg=+0.0002 dV_fps=+0.4452  g_end 32.13130 vs 32.18343
+   zero-rot + gm1 minus default: dh_ft=-7.8271 dnorth_ft=+3.3382 deast_ft=-0.0024 dtheta_deg=-0.0679 dpsi_deg=-360.0000 dphi_deg=+0.0002 dV_fps=+0.4452  g_end 32.13130 vs 32.18343
+   gm0 only (default planet) minus default: dh_ft=+6.8961 dnorth_ft=-2.9344 deast_ft=-0.0057 dtheta_deg=+0.0600 dpsi_deg=-0.0001 dphi_deg=+0.0001 dV_fps=-0.3907  g_end 32.13126 vs 32.18343
+== lat=0.0 psi=90.0: T=20.0s dt=1/240; default final h=4999.905 lat=0.000000 lon=0.027388 g=32.18340
+   zero-rot+gm0 minus default: dh_ft=-17.4698 dnorth_ft=-0.0000 deast_ft=+7.4348 dtheta_deg=-0.1518 dpsi_deg=-0.0000 dphi_deg=-0.0000 dV_fps=+0.9920  g_end 32.13130 vs 32.18340
+   zero-rot + gm1 minus default: dh_ft=-17.4698 dnorth_ft=-0.0000 deast_ft=+7.4348 dtheta_deg=-0.1518 dpsi_deg=-0.0000 dphi_deg=-0.0000 dV_fps=+0.9920  g_end 32.13130 vs 32.18340
+   gm0 only (default planet) minus default: dh_ft=+6.8941 dnorth_ft=-0.0000 deast_ft=-2.9405 dtheta_deg=+0.0601 dpsi_deg=-0.0000 dphi_deg=-0.0000 dV_fps=-0.3907  g_end 32.13123 vs 32.18340
+== lat=45.0 psi=0.0: T=20.0s dt=1/240; default final h=4978.911 lat=45.027458 lon=0.000026 g=32.21338
+   zero-rot+gm0 minus default: dh_ft=+3.5240 dnorth_ft=-18.2184 deast_ft=-6.7610 dtheta_deg=+0.0306 dpsi_deg=-0.0625 dphi_deg=+0.0633 dV_fps=-0.1993  g_end 32.13130 vs 32.21338
+   zero-rot + gm1 minus default: dh_ft=+3.5240 dnorth_ft=-18.2184 deast_ft=-6.7610 dtheta_deg=+0.0306 dpsi_deg=-0.0625 dphi_deg=+0.0633 dV_fps=-0.1993  g_end 32.13130 vs 32.21338
+   gm0 only (default planet) minus default: dh_ft=+2.6490 dnorth_ft=+9.2234 deast_ft=+0.0009 dtheta_deg=+0.0613 dpsi_deg=-0.0001 dphi_deg=+0.0001 dV_fps=+0.7639  g_end 32.23966 vs 32.21338
+== lat=45.0 psi=90.0: T=20.0s dt=1/240; default final h=4985.721 lat=44.999975 lon=0.038821 g=32.21333
+   zero-rot+gm0 minus default: dh_ft=-3.2862 dnorth_ft=+6.8228 deast_ft=-15.4597 dtheta_deg=-0.0286 dpsi_deg=-0.0627 dphi_deg=+0.0632 dV_fps=+0.1858  g_end 32.13130 vs 32.21333
+   zero-rot + gm1 minus default: dh_ft=-3.2862 dnorth_ft=+6.8228 deast_ft=-15.4597 dtheta_deg=-0.0286 dpsi_deg=-0.0627 dphi_deg=+0.0632 dV_fps=+0.1858  g_end 32.13130 vs 32.21333
+   gm0 only (default planet) minus default: dh_ft=-3.4433 dnorth_ft=+6.8296 deast_ft=+1.4763 dtheta_deg=-0.0298 dpsi_deg=-0.0634 dphi_deg=+0.0641 dV_fps=+0.1961  g_end 32.23955 vs 32.21333
