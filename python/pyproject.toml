@@ -1,0 +1,16 @@
+[project]
+name = "flightsim-analysis"
+version = "0.1.0"
+description = "Analysis, reporting and control-design tooling for the flightsim C++ project"
+requires-python = ">=3.12,<3.13"
+dependencies = ["numpy", "scipy", "plotly", "kaleido", "control", "jsbsim", "pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["flightsim_analysis"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
