@@ -324,7 +324,9 @@ Cases:
 | J1 | Point check: JSBSim initialized at our trim state; report JSBSim's initial accelerations | `|u̇|,|ẇ|` < 1e-3 ft/s², `|q̇|` < 1e-5 rad/s² (initial targets; exceeding them blocks progress until root-caused) |
 | J2 | Each simulator's own trim at the same (V, h) | α, δe, throttle agree within 0.1 % (or explained) |
 | J3 | Open-loop responses from each simulator's own trim, 20 s: elevator doublet, aileron pulse, rudder doublet | Compare deviations from trim (ΔV, Δα, Δq, Δθ, Δh, Δβ, Δp, Δr, Δφ). Target: max difference ≤ 2 % of each signal's peak deviation |
-| J4 (appendix) | JSBSim stock `f16` at a matched condition | Trim values and, if surfaces can be driven directly (bypassing its FCS), open-loop responses. Reported as **model-form** difference; no pass/fail beyond "runs and is explained" |
+| J4 (appendix) | JSBSim stock `f16` at a matched condition | Trim values only: the M4.0 spike showed the stock FCS overwrites direct surface commands, so open-loop responses would require editing a copy of the GPL model (out of scope). Reported as **model-form** difference; no pass/fail beyond "runs and is explained" |
+
+**Amendment from the M4.0 spike (2026-11-08, `spikes/jsbsim/FINDINGS.md`, jsbsim 1.3.3):** the primary approach is feasible (custom planet via `fdm.load_planet`, `simulation/gravity-model = 0`, `negated_crossproduct_inertia="false"`, direct surface drive, JSBSim trim). JSBSim has no RK4; its integrators are set explicitly (recorded in metadata) and its own discretization error is bounded by comparing two small steps (e.g. 1/2400 s and 1/4800 s). Matched-model trim requires a dummy zero-power engine so FGTrim can vary throttle, with thrust supplied by the external force.
 
 **Discrepancy budget** (required section in `docs/results.md`): each candidate source (gravity model, curvature, atmosphere implementation, table edge handling, integrator, sampling alignment, residual trim error) is toggled or bounded individually and its contribution to J3 differences quantified. Remaining unexplained difference must be stated plainly.
 
