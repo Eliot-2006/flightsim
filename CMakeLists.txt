@@ -23,7 +23,10 @@ add_library(flightsim_core STATIC
   src/flightsim/math/quat.cpp
   src/flightsim/math/frames.cpp
   src/flightsim/core/rigid_body.cpp
-  src/flightsim/core/forces.cpp)
+  src/flightsim/core/forces.cpp
+  src/flightsim/validation/analytic.cpp
+  src/flightsim/validation/cases.cpp
+  src/flightsim/validation/convergence.cpp)
 target_include_directories(flightsim_core PUBLIC src)
 target_link_libraries(flightsim_core PUBLIC Eigen3::Eigen tomlplusplus::tomlplusplus)
 target_compile_definitions(flightsim_core PRIVATE
@@ -47,7 +50,9 @@ target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(unit_tests)
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 
-add_executable(validation_tests tests/validation/test_smoke_validation.cpp)
+add_executable(validation_tests
+  tests/validation/test_smoke_validation.cpp
+  tests/validation/test_translational.cpp)
 target_link_libraries(validation_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(validation_tests)
 gtest_discover_tests(validation_tests PROPERTIES LABELS validation)
