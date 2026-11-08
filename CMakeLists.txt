@@ -21,7 +21,9 @@ endif()
 add_library(flightsim_core STATIC
   src/flightsim/version.cpp
   src/flightsim/math/quat.cpp
-  src/flightsim/math/frames.cpp)
+  src/flightsim/math/frames.cpp
+  src/flightsim/core/rigid_body.cpp
+  src/flightsim/core/forces.cpp)
 target_include_directories(flightsim_core PUBLIC src)
 target_link_libraries(flightsim_core PUBLIC Eigen3::Eigen tomlplusplus::tomlplusplus)
 target_compile_definitions(flightsim_core PRIVATE
@@ -38,7 +40,9 @@ include(GoogleTest)
 add_executable(unit_tests
   tests/unit/test_smoke.cpp
   tests/unit/test_quat.cpp
-  tests/unit/test_frames.cpp)
+  tests/unit/test_frames.cpp
+  tests/unit/test_rigid_body.cpp
+  tests/unit/test_integrators.cpp)
 target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(unit_tests)
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
