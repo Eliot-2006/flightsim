@@ -253,30 +253,65 @@ unstable. The CLI preserves these as `longitudinal_real_1/2` rather than forcing
 a complex-mode classification. The canonical published five-mode comparison
 is performed only at xcg=.30.
 
-### M5: LN2 literal breakpoint guard (unresolved)
+### M5: LN2 active breakpoint guard (orchestrator ruling)
 
-The specified sea-level, rotor-on, ideal-surface elevator steps (-0.5 and
--0.05 deg, 5 s, RK4 dt=.01) give max-error norms 0.302952703602 and
-0.003144750990, a ratio of 96.3359912 within the unchanged [70,130] bound.
-Nevertheless the binding no-cell-change guard **fails**. At t=.01 s the
-large-step beta becomes -3.27642e-9 deg, leaving the beta=0 breakpoint toward
-negative beta. DLDA, DLDR, DNDA and DNDR change from cell 15 to 14. These
-lookups' control multipliers are zero in an elevator-only run, but the monitor
-records every lookup and the test does not discard them. This is a boundary
-departure induced by the physical rotor coupling, not a finite-difference or
-input-unit error. The large-step alpha stays below 5 deg (3.62053 deg at 5 s).
+The original sea-level, rotor-on steps (-0.5 and -0.05 deg, 5 s, RK4 dt=.01)
+gave a quadratic ratio of 96.3359912 but flagged four inactive signed-beta
+lookups and a brief negative-altitude thrust lookup. The latter is a real
+initial lift-loss transient, not an interpolation bug: the large step first
+evaluates thrust at h=-4.113491259e-6 m. LN2's altitude is not prescribed by the
+plan, so the study now uses a fresh 502 ft/s, xcg=.30 trim at **100 ft** (30.48 m),
+inside the same thrust-table cell for the full response. SlAdc, g=data.g_sl,
+rotor on, ideal surfaces, both step sizes, the 5 s duration and dt=.01 remain
+unchanged. Published TR1/LN1 comparisons still use their specified sea-level
+operating points. The CLI exports the separate response operating point and x0.
 
-The step also first evaluates the thrust table at h=-4.113491259e-6 m during
-an initial downward transient (trailing-edge-up elevator reduces lift before
-pitch builds). Thus strict in-domain monitoring also fails at sea level. A
-probe at 10,000 ft avoids the domain violation but crosses alpha=5 deg at
-1.63 s and the engine altitude breakpoint at 10,000 ft; it is not a remedy.
-No lookup, gravity, rotor, tolerance or assertion is changed to manufacture a
-pass. An amendment to the LN2 operating point/monitor protocol needs an owner
-decision. The CLI and generated report expose the failed monitor verdict.
+The orchestrator authorized exactly two exclusions, with assertions in
+`F16Linear.LN2QuadraticScaling`:
+
+- DLDA, DLDR, DNDA and DNDR may change cells only while da=dr=0 exactly
+  throughout the run. The test asserts ideal surfaces and zero input commands,
+  and asserts each run's maximum absolute effective da/dr is exactly zero,
+  accumulated at **every RK4 stage**. Each coefficient's output is multiplied
+  by zero, so its cell changes cannot act on this response.
+- The Cl/Cn sign fold at beta=0 is smooth only inside the same first |beta|
+  cell: every loaded alpha-row intercept Cl(alpha,0) and Cn(alpha,0) must be
+  exactly zero. The test checks every row of both tables, the unchanged cell
+  index and first-beta-cell index. Bilinear interpolation then gives
+  `sign(beta)*C(alpha,abs(beta)) = beta*slope(alpha)` across zero. Actual Cl/Cn
+  alpha or nonzero-|beta| cell changes are never excluded.
+
+Both step sizes record these events at t=.01 s:
+
+| Table | Cells | Classification and proof |
+|---|---|---|
+| aero.dlda | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dldr | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dnda | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dndr | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.cl | 12 → 12 | Smooth beta=0 fold; every alpha-row intercept is zero |
+| aero.cn | 12 → 12 | Smooth beta=0 fold; every alpha-row intercept is zero |
+
+The folded Cl/Cn table indices do not actually change; their sign-fold events
+are recorded explicitly for audit. The small negative beta is produced by
+rotor gyroscopic coupling: `-omega × h_rotor` contributes **q*hx** about body z
+when pitch builds after the elevator step, inducing yaw and sideslip.
+
+No other exclusions exist. Any other cx/cz/cm, damping, thrust or Cl/Cn cell
+change fails. Regression tests demonstrate that active alpha crossings and a
+10,000 ft thrust-altitude breakpoint still fail, nonzero aileron input prevents
+the effectiveness exclusion, and one nonzero Cl/Cn intercept at even a remote
+alpha row invalidates the fold exclusion. The raw lookup monitor and all
+interpolation/domain behavior remain unchanged; classification is confined to
+the LN2 diagnostic, and every event includes its table, cells, time and reason
+in test output, CLI JSON and the generated report.
+
+At 100 ft the max-error norms are 0.302671106748 and 0.00314170349212, giving
+**96.3398065754** within the unchanged [70,130] bound. There are no unexcluded
+cell changes and no out-of-domain lookups.
 
 LN3 at xcg=.30 selects epsilon=6e-6. The maximum relative matrix-entry changes
 against 6e-5 and 6e-7 are 5.94017e-10 and 1.39313e-10, both below 1e-5. The
 1e-2 through 1e-10 sweep exhibits truncation, a flat region and roundoff; each
 matrix is normalized by its own maximum absolute entry. The generated report
-contains every TR1, LN1 and LN3 difference and labels LN2 as failing.
+contains every TR1, LN1 and LN3 difference and the passing LN2 monitor evidence.

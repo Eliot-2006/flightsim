@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <stdexcept>
 
 #include "flightsim/analysis/flight_vars.hpp"
@@ -49,17 +50,80 @@ ElevatorResponse elevator_response(const F16Model& model, const TrimResult& tr, 
   Vec<4> du = Vec<4>::Zero();
   du(1) = step;
   m.evaluate(0, x, u);
-  const auto cells = monitor.cells;
-  monitor.reset();
-  auto f = [&](double t, const Vec<17>& y) -> Vec<17> {
-    monitor.cells.clear();
-    const Vec<17> dy = m.deriv(t, y, u);
-    if (monitor.cells != cells) {
+  auto cells = monitor.cells;
+  const auto& d = m.data;
+  std::map<int, std::string> names;
+  for (const auto* table : {&d.cx, &d.cm, &d.cl, &d.cn, &d.dlda, &d.dldr, &d.dnda, &d.dndr, &d.thrust_idle,
+                            &d.thrust_mil, &d.thrust_max}) {
+    names.emplace(table->id(), table->name());
+  }
+  for (const auto* table : {&d.cz, &d.cxq, &d.cyr, &d.cyp, &d.czq, &d.clr, &d.clp, &d.cmq, &d.cnr, &d.cnp}) {
+    names.emplace(table->id(), table->name());
+  }
+  const auto zero_intercepts = [](const Table2D& table) {
+    if (table.y().front() != 0) {
+      return false;
+    }
+    return std::all_of(table.x().begin(), table.x().end(),
+                       [&](double alpha) { return table(alpha, 0) == 0; });
+  };
+  const bool smooth_cl = zero_intercepts(d.cl), smooth_cn = zero_intercepts(d.cn);
+  double beta = x13_from_x17(m, x)(2);
+  auto record = [&](const std::string& name, int from, int to, double t, bool ignored, const char* why) {
+    result.cell_changes.push_back({name, from, to, t, ignored, why});
+    if (!ignored) {
       if (!result.cells_changed) {
         result.first_cell_change_time = t;
       }
       result.cells_changed = true;
     }
+  };
+  monitor.reset();
+  auto f = [&](double t, const Vec<17>& y) -> Vec<17> {
+    monitor.cells.clear();
+    const Vec<17> dy = m.deriv(t, y, u);
+    const double da = m.actuators ? y(ac::kDa) : u.da;
+    const double dr = m.actuators ? y(ac::kDr) : u.dr;
+    result.max_abs_aileron = std::max(result.max_abs_aileron, std::abs(da));
+    result.max_abs_rudder = std::max(result.max_abs_rudder, std::abs(dr));
+    // With ideal surfaces u is constant, so exact zeros hold throughout the entire run.
+    const bool inactive = !m.actuators && da == 0 && dr == 0;
+    if (monitor.cells.size() != cells.size()) {
+      record("lookup sequence", -1, -1, t, false, "lookup count changed");
+    } else {
+      for (std::size_t i = 0; i < cells.size(); ++i) {
+        const auto& before = cells[i];
+        const auto& after = monitor.cells[i];
+        if (before == after) {
+          continue;
+        }
+        const bool effectiveness = after[0] == d.dlda.id() || after[0] == d.dldr.id() ||
+                                   after[0] == d.dnda.id() || after[0] == d.dndr.id();
+        const bool ignored = before[0] == after[0] && effectiveness && inactive;
+        record(names.at(after[0]), before[1], after[1], t, ignored,
+               ignored ? "da=dr=0 exactly; effectiveness multiplied by zero" : "active table cell changed");
+      }
+    }
+    const double next_beta = x13_from_x17(m, y)(2);
+    const auto sign = [](double v) { return (v > 0) - (v < 0); };
+    if (sign(beta) != sign(next_beta)) {
+      for (const auto* table : {&d.cl, &d.cn}) {
+        const auto id = table->id();
+        const auto match = [&](const auto& cell) { return cell[0] == id; };
+        const auto before = std::find_if(cells.begin(), cells.end(), match);
+        const auto after = std::find_if(monitor.cells.begin(), monitor.cells.end(), match);
+        if (before != cells.end() && after != monitor.cells.end()) {
+          const int columns = static_cast<int>(table->y().size() - 1);
+          const bool smooth = (id == d.cl.id() ? smooth_cl : smooth_cn) && (*before)[1] == (*after)[1] &&
+                              (*after)[1] % columns == 0;
+          record(table->name(), (*before)[1], (*after)[1], t, smooth,
+                 smooth ? "beta=0 fold; zero intercept at every alpha row, same first |beta| cell"
+                        : "beta fold is not smooth within the same first |beta| cell");
+        }
+      }
+    }
+    beta = next_beta;
+    cells = monitor.cells;
     return dy;
   };
   for (int i = 0; i <= 500; ++i) {

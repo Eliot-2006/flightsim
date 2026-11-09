@@ -171,11 +171,22 @@ def aircraft(out: Path) -> dict:
     m["linear.ln3.table"] = "\n".join(f"| {p['epsilon']:.1e} | {p['change']:.6g} |" for p in linear["sweep"])
     m["linear.ln3.epsilon"] = linear["chosen_epsilon"]
     m["linear.ln3.flat"] = "; ".join(f"ε={p['epsilon']:.1e}: {p['change']:.6g}" for p in linear["flat_region"])
+    m["linear.ln2.altitude"] = linear["response_operating_point"]["h_m"]
     big, small = linear["responses"]
     m["linear.ln2.ratio"] = big["max_error"] / small["max_error"]
     m["linear.ln2.status"] = "pass" if all(not r["cells_changed"] and not r["out_of_domain"]
+                                           and r["max_abs_aileron"] == r["max_abs_rudder"] == 0
                                            for r in linear["responses"]) and 70 <= m["linear.ln2.ratio"] <= 130 else "FAIL"
-    m["linear.ln2.monitor"] = "; ".join(f"{r['step_deg']:.2g} deg: cells_changed={r['cells_changed']}, "
-                                       f"first at {r['first_cell_change_time']:.3g} s, {r['first_violation']}"
-                                       for r in linear["responses"])
+    m["linear.ln2.monitor"] = "; ".join(
+        f"{r['step_deg']:.2g} deg: active_cells_changed={r['cells_changed']}, out_of_domain={r['out_of_domain']}, "
+        f"max |da|={r['max_abs_aileron']:.3g} rad, max |dr|={r['max_abs_rudder']:.3g} rad"
+        for r in linear["responses"])
+    rows = []
+    for response in linear["responses"]:
+        for change in response["cell_changes"]:
+            reason = change["reason"].replace("|", r"\|")
+            verdict = "excluded" if change["ignored"] else "FAIL"
+            rows.append(f"| {response['step_deg']:.2g} | {change['table']} | {change['from']} → {change['to']} | "
+                        f"{change['t']:.3g} | {verdict}: {reason} |")
+    m["linear.ln2.changes.table"] = "\n".join(rows)
     return m

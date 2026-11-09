@@ -19,10 +19,19 @@ struct ResponsePoint {
   double t;
   Vec<13> nonlinear, linear;
 };
+struct CellChange {
+  std::string table;
+  int from, to;
+  double t;
+  bool ignored;
+  std::string reason;
+};
 struct ElevatorResponse {
   std::vector<ResponsePoint> points;
   double max_error = 0;
-  bool cells_changed = false, out_of_domain = false;
+  double max_abs_aileron = 0, max_abs_rudder = 0;     // effective inputs, checked at every RK4 stage
+  std::vector<CellChange> cell_changes;               // includes the two explicitly justified LN2 exclusions
+  bool cells_changed = false, out_of_domain = false;  // cells_changed means an unexcluded change
   double first_cell_change_time = -1;
   std::string first_violation;
 };

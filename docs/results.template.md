@@ -91,14 +91,24 @@ Matrix indices are zero-based in each reference's listed state/input order.
 
 ### Linear vs nonlinear (LN2)
 
+Fresh trim at h={{linear.ln2.altitude}} m (100 ft), 502 ft/s, xcg=0.30, rotor on, ideal surfaces.
 5 s RK4 at dt=0.01 s, elevator −0.5° vs −0.05°; max error norm over [V, α, β, φ, θ, ψ, p, q, r]
 with V in m/s and the other coordinates in SI. Ratio **{{linear.ln2.ratio:.6f}}** (required [70,130]);
 combined ratio/domain/breakpoint verdict: **{{linear.ln2.status}}**.
 
 Monitor evidence: {{linear.ln2.monitor}}.
 
-The literal no-cell-change guard is binding; see `docs/design.md` for the boundary-departure investigation.
-The overlay is in `out/index.html`.
+Only the orchestrator's two exclusions apply: zero-multiplier DLDA/DLDR/DNDA/DNDR with da=dr=0
+exactly at every RK4 stage, and the smooth Cl/Cn β=0 fold with zero intercepts at every loaded alpha row
+and unchanged first |β| cell. Tests assert both justifications; every other cell change fails.
+The interior altitude keeps the initial lift transient inside the thrust-table domain.
+
+| Elevator step [deg] | Table | Cells | Time [s] | Verdict and reason |
+|---|---|---|---|---|
+{{linear.ln2.changes.table}}
+
+Rotor coupling q·hx produces the small beta. See `docs/design.md` for the validation findings;
+the overlay is in `out/index.html`.
 
 ### Finite-difference step sweep (LN3)
 

@@ -246,6 +246,6 @@ FIGURES.extend([
            "Central differences from ε=1e-2 to 1e-10: truncation, a flat region, then roundoff. Changes are maximum absolute entry differences divided by the maximum absolute entry of each matrix, taking the larger of A and B. C++ computes every Jacobian.",
            "validation_tests: F16Linear.LN3StepSweep (chosen ε vs 10ε and ε/10 ≤1e-5)", ln3),
     Figure("ln2", "LN2: linear and nonlinear elevator responses",
-           "Trailing-edge-up steps of 0.5° and 0.05° over 5 s, computed in C++. The ratio and lookup-monitor verdict are reported in docs/results.md; a valid quadratic ratio alone does not pass the breakpoint guard.",
-           "validation_tests: F16Linear.LN2QuadraticScaling (ratio [70,130] AND no table-cell change)", ln2),
+           "Trailing-edge-up steps of 0.5° and 0.05° over 5 s from a fresh 100 ft trim, computed in C++. The ratio and lookup-monitor verdict are reported in docs/results.md; the guard excludes only zero-multiplier lateral controls and the asserted smooth beta=0 fold.",
+           "validation_tests: F16Linear.LN2QuadraticScaling (ratio [70,130] AND no active table kink crossed)", ln2),
 ])

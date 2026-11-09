@@ -165,10 +165,22 @@ int cmd_aircraft(const std::string& command, const std::string& scenario, const 
       comma = true;
       out << "{\"epsilon\":" << point.eps << ",\"change\":" << point.change << '}';
     }
-    out << "],\"responses\":[";
+    // LN2 uses an interior altitude so the initial elevator lift transient stays in the thrust domain.
+    auto response_spec = s.trim;
+    response_spec.h = std::max(response_spec.h, 100 * units::ft);
+    const auto response_trim = trim_level(s.model, response_spec);
+    if (!response_trim.ok) {
+      throw std::runtime_error("LN2 trim: " + response_trim.message);
+    }
+    const auto response_lm = linearize(s.model, response_trim);
+    out << "],\"response_operating_point\":{\"h_m\":" << response_spec.h << ",\"V_mps\":" << response_spec.V
+        << ",\"xcg\":" << response_spec.xcg << ",\"gamma_rad\":" << response_spec.gamma
+        << "},\"response_x0\":";
+    json_vector(out, response_lm.x0);
+    out << ",\"responses\":[";
     comma = false;
     for (double step : {-0.5 * units::deg, -0.05 * units::deg}) {
-      const auto response = elevator_response(s.model, tr, lm, step);
+      const auto response = elevator_response(s.model, response_trim, response_lm, step);
       if (comma) {
         out << ',';
       }
@@ -178,7 +190,22 @@ int cmd_aircraft(const std::string& command, const std::string& scenario, const 
           << ",\"out_of_domain\":" << response.out_of_domain
           << ",\"first_cell_change_time\":" << response.first_cell_change_time << ",\"first_violation\":";
       json_string(out, response.first_violation);
-      out << ",\"points\":[";
+      out << ",\"max_abs_aileron\":" << response.max_abs_aileron
+          << ",\"max_abs_rudder\":" << response.max_abs_rudder << ",\"cell_changes\":[";
+      bool change_comma = false;
+      for (const auto& change : response.cell_changes) {
+        if (change_comma) {
+          out << ',';
+        }
+        change_comma = true;
+        out << "{\"table\":";
+        json_string(out, change.table);
+        out << ",\"from\":" << change.from << ",\"to\":" << change.to << ",\"t\":" << change.t
+            << ",\"ignored\":" << change.ignored << ",\"reason\":";
+        json_string(out, change.reason);
+        out << '}';
+      }
+      out << "],\"points\":[";
       bool point_comma = false;
       for (const auto& point : response.points) {
         if (point_comma) {

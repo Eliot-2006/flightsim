@@ -59,6 +59,10 @@ def test_full_pipeline_builds_every_figure(tmp_path):
     m = metrics.build(tmp_path / "out")
     assert {"trim.table", "linear.modes.table", "linear.matrices.table", "linear.ln2.ratio", "linear.ln3.table"} <= m.keys()
     assert {"ln3", "ln2"} <= {f.id for f in plots.FIGURES}
+    assert m["linear.ln2.status"] == "pass"
+    # Five Markdown columns plus the outer delimiters: embedded |beta| must be escaped.
+    for row in m["linear.ln2.changes.table"].splitlines():
+        assert len(re.findall(r"(?<!\\)\|", row)) == 6
     html = report.build_html(tmp_path / "out", m)
     for f in plots.FIGURES:
         assert f'id="fig-{f.id}"' in html
@@ -113,3 +117,10 @@ def test_aircraft_cli_json(tmp_path, cg):
                 assert any(m["real"] > 0 for m in result["modes"])
             assert len(result["sweep"]) == 9
             assert len(result["responses"]) == 2
+            assert result["response_operating_point"]["h_m"] == 30.48
+            if cg == "030":
+                for response in result["responses"]:
+                    assert response["max_abs_aileron"] == response["max_abs_rudder"] == 0
+                    assert not response["out_of_domain"] and not response["cells_changed"]
+                    assert len(response["cell_changes"]) == 6
+                    assert all(change["ignored"] for change in response["cell_changes"])
