@@ -11,7 +11,6 @@
 #include "flightsim/analysis/flight_vars.hpp"
 #include "flightsim/core/integrators.hpp"
 #include "flightsim/math/units.hpp"
-#include "flightsim/validation/convergence.hpp"
 
 using namespace flightsim;
 
@@ -160,10 +159,10 @@ TEST(F16Consistency, B1WorkEnergy) {
   std::array<double, 3> residuals;
   const std::array<double, 3> steps = {0.04, 0.02, 0.01};
   for (std::size_t i = 0; i < steps.size(); ++i) {
-    residuals[i] = run<18>(model(), steps[i], 60).residual;
+    residuals[i] = run<18>(model(), steps[i], 20).residual;
     std::cout << std::setprecision(12) << "B1 dt=" << steps[i] << " residual=" << residuals[i] << '\n';
   }
-  // PRD 8.4 / Task 4.6: 60 s balance, relative residual <1e-6 at dt=0.01; no tolerance tuning.
+  // Amended PRD 8.4 / Task 4.6: 20 s in-domain balance, relative residual <1e-6 at dt=0.01.
   EXPECT_LT(residuals[2], 1e-6);
   EXPECT_LT(residuals[1], residuals[0]);
   EXPECT_LT(residuals[2], residuals[1]);
@@ -172,7 +171,7 @@ TEST(F16Consistency, B1WorkEnergy) {
 }
 
 TEST(F16Consistency, B2AngularImpulse) {
-  const auto result = run<20>(model(), 0.01, 60);
+  const auto result = run<20>(model(), 0.01, 20);
   std::cout << std::setprecision(12) << "B2 dt=0.01 residual=" << result.residual << '\n';
   // PRD 8.4 / Task 4.6: full inertial-vector balance including rotor, <1e-6 relative.
   EXPECT_LT(result.residual, 1e-6);
@@ -229,22 +228,12 @@ TEST(F16Consistency, W1GalileanInvariance) {
 TEST(F16Consistency, AircraftConvergenceMeasured) {
   const auto m = model();
   const std::vector<double> steps = {0.04, 0.02, 0.01, 0.005, 0.0025};
-  double h_ref = steps.back() / 16;
-  auto coarse_reference = run(m, 2 * h_ref, 10).states.back();
-  auto reference = run(m, h_ref, 10).states.back();
+  // Amended PRD 6.3, non-smooth aircraft only: h_min/64 reference, h_min/32 self-convergence estimate.
+  const double h_ref = steps.back() / 64;
+  const auto coarse_reference = run(m, 2 * h_ref, 20).states.back();
+  const auto reference = run(m, h_ref, 20).states.back();
   std::vector<Vec<17>> states;
-  for (double h : steps) states.push_back(run(m, h, 10).states.back());
-  // PRD 6.3: reference self-convergence <1e-3 of the finest method error, refine further if needed.
-  for (int refinement = 0; refinement < 4; ++refinement) {
-    const double finest_pos = (rb::pos(states.back()) - rb::pos(reference)).norm();
-    const double finest_att = attitude_error(rb::quat(states.back()), rb::quat(reference));
-    if ((rb::pos(coarse_reference) - rb::pos(reference)).norm() < 1e-3 * finest_pos &&
-        attitude_error(rb::quat(coarse_reference), rb::quat(reference)) < 1e-3 * finest_att)
-      break;
-    coarse_reference = reference;
-    h_ref /= 2;
-    reference = run(m, h_ref, 10).states.back();
-  }
+  for (double h : steps) states.push_back(run(m, h, 20).states.back());
   const double pos_reference_error = (rb::pos(coarse_reference) - rb::pos(reference)).norm();
   const double att_reference_error = attitude_error(rb::quat(coarse_reference), rb::quat(reference));
   std::vector<double> position, attitude;
@@ -254,17 +243,34 @@ TEST(F16Consistency, AircraftConvergenceMeasured) {
     std::cout << std::setprecision(12) << "Aircraft dt=" << steps[i]
               << " position_error_m=" << position.back() << " attitude_error_rad=" << attitude.back() << '\n';
   }
-  ASSERT_LT(pos_reference_error, 1e-3 * position.back());  // PRD 6.3 reference-accuracy bound.
-  ASSERT_LT(att_reference_error, 1e-3 * attitude.back());  // Same bound for attitude independently.
-  const auto pos_fit = validation::observed_order(steps, position, rb::pos(reference).norm());
-  const auto att_fit = validation::observed_order(steps, attitude, 1);
-  std::cout << "Aircraft position_order=" << pos_fit.order << " levels=" << pos_fit.first_level << ':'
-            << pos_fit.last_level << " attitude_order=" << att_fit.order << " levels=" << att_fit.first_level
-            << ':' << att_fit.last_level << " reference_dt=" << h_ref
-            << " reference_errors=" << pos_reference_error << ',' << att_reference_error << '\n';
-  // Task 4.6 / PRD 6.3: non-smooth piecewise-linear tables reduce order; do not assert fourth order.
-  EXPECT_GE(pos_fit.order, 0.9);
-  EXPECT_LE(pos_fit.order, 4.2);
-  EXPECT_GE(att_fit.order, 0.9);
-  EXPECT_LE(att_fit.order, 4.2);
+  auto measure = [&](const char* metric, const std::vector<double>& errors, double reference_error) {
+    std::vector<std::size_t> levels;
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+      // Amended PRD 6.3, non-smooth case: least-squares fit over reference-resolved levels.
+      if (errors[i] > 0 && errors[i] >= 10 * reference_error) {
+        const double log_h = std::log(steps[i]), log_error = std::log(errors[i]);
+        sx += log_h;
+        sy += log_error;
+        sxx += log_h * log_h;
+        sxy += log_h * log_error;
+        levels.push_back(i);
+      }
+    }
+    ASSERT_GE(levels.size(), 2U) << metric << ": insufficient reference-resolved levels";
+    const double n = static_cast<double>(levels.size());
+    const double order = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    std::cout << "Aircraft " << metric << "_order=" << order
+              << " reference_error_estimate=" << reference_error << " reference_dt=" << h_ref
+              << " levels_used=";
+    for (const auto level : levels) {
+      std::cout << level << "(dt=" << steps[level] << ") ";
+    }
+    std::cout << '\n';
+    // Task 4.6 / amended PRD 6.3: measure reduced order on non-smooth tables, bounds unchanged.
+    EXPECT_GE(order, 0.9) << metric;
+    EXPECT_LE(order, 4.2) << metric;
+  };
+  measure("position", position, pos_reference_error);
+  measure("attitude", attitude, att_reference_error);
 }

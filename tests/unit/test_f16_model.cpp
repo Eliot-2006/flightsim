@@ -43,7 +43,7 @@ void check_reference(const char* name, double actual, double expected) {
             << " relative_error=" << error << '\n';
   // PRD 8.5 / Task 4.5: published S&L values have only 4-6 printed significant figures.
   EXPECT_LE(error, 1e-3) << name;
-  // Investigated list (docs/results.md): p_dot/r_dot use rounded S&L c1..c9 in the publication;
+  // Investigated list (docs/design.md, Validation findings): p_dot/r_dot use rounded S&L c1..c9;
   // production derives them from the full inertia. A1 below verifies that those rounded numbers close
   // the discrepancy. The binding 1e-3 check above applies to every component, including these two.
   const bool rounded_inertia = std::string_view(name) == "p_dot" || std::string_view(name) == "r_dot";
