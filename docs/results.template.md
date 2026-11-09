@@ -251,16 +251,13 @@ Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limi
 - **The elevator rate limit is reached.** C1's peak elevator rate is {{control.c1.rate_dps:.1f}} deg/s against the 60 deg/s limit: the first controller
   sample after the command asks for a larger elevator step than the actuator can follow. The design's linear model has no rate limit; the
   nonlinear C1 still matches it to a fraction of a percent of overshoot (table), so the limit is brief.
-- **C2 anti-windup is less oscillatory but much slower.** With back-calculation the overshoot is {{control.c2.overshoot:.2f}} %, against
-  {{control.c2n.overshoot:.2f}} % without, so the asserted ordering holds. But the anti-windup run never reaches the 2 % band in {{control.c2.t_final:.0f}} s
-  and is still {{control.c2.final_alt_error_ft:.0f}} ft short at the end, while the run without anti-windup settles in {{control.c2n.settling:.0f}} s and ends {{control.c2n.final_alt_error_ft:.1f}} ft off.
-  Mechanism: while θ_cmd is saturated (peak {{control.c2.theta_cmd_max_deg:.1f}}°), back-calculation with t_t = 4 s drives the altitude integrator to
-  u_sat − k_p·e, a large negative value; as the error shrinks θ_cmd falls to trim long before the aircraft arrives, and the integrator
-  (k_i/k_p = 0.005 rad/s) then needs hundreds of seconds to remove the rest. The throttle does not saturate in this case (peak {{control.c2.throttle_max:.2f}}).
-  The tracking time is a `design.py` choice (t_t = 1/ω_c) and the lever for this behaviour; it was not changed here.
-- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the linear prediction (no limits) does
-  not apply: overshoot is {{control.c3.overshoot:.1f}} % (linear {{control.c3.lin_overshoot:.1f}} %), and the airspeed has {{control.c3.sse_ft:.1f}} ft/s of error left in the last 10 s of the {{control.c3.t_final:.0f}} s
-  run (settled within 2 %: {{control.c3.settled}}), for the same back-calculation reason as C2. The PRD C3 targets (overshoot and altitude deviation) are met.
+- **C2 anti-windup works because the tracking times are matched to the integral times.** With anti-windup the overshoot is
+  {{control.c2.overshoot:.2f}} % against {{control.c2n.overshoot:.2f}} % without, it settles in {{control.c2.settling:.1f}} s against {{control.c2n.settling:.1f}} s, and ends
+  within {{control.c2.sse_ft:.2f}} ft of the command (θ_cmd saturates at {{control.c2.theta_cmd_max_deg:.1f}}°; the throttle peaks at {{control.c2.throttle_max:.2f}} and does not saturate).
+  Back-calculation tracking times follow one rule, t_t = T_i = k_p/k_i for every PI loop (`design.py`, docs/design.md "M7b: anti-windup tracking times");
+  the first design used t_t = 1/ω_c, far below T_i, which let a saturated P term drag the altitude integrator negative and left the run short of its command.
+- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the first samples are limited; overshoot is
+  {{control.c3.overshoot:.2f}} % (linear {{control.c3.lin_overshoot:.2f}} %) and the airspeed settles within 2 % in {{control.c3.settling:.2f}} s (linear {{control.c3.lin_settling:.1f}} s).
 - **C4 recovery definition.** "Returns within a 2 % band" is measured against 2 % of the peak deviation in the window that runs from a disturbance to the
   next one (or the end of the run). The gust is applied {{control.c4.gust.t_s:.0f}} s after the start so that the slow headwind transient (altitude recovery
   {{control.c4.headwind.altitude_recovery:.0f}} s, airspeed {{control.c4.headwind.airspeed_recovery:.0f}} s) has died out. The headwind change is a time-aligned constant-wind step: the aircraft

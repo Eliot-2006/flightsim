@@ -374,12 +374,15 @@ Measured values are computed by the C++ runner (`control/metrics.cpp`, written t
 | C1 | 2 % settling | ≤ 25 s | 16.3 s | 16.45 s | pass |
 | C1 | steady-state \|e\| (last 10 s of 305 s) | ≤ 1 ft | 0.32 ft (at 300 s) | 0.33 ft | pass |
 | C1 | airspeed deviation | ≤ 5 ft/s | 2.96 ft/s | 3.19 ft/s | pass |
-| C2 +1,000 ft, anti-windup | overshoot | ≤ 15 % | n/a (saturates) | 0.00 % | pass |
-| C2 | overshoot without anti-windup | > with | n/a | 4.61 % | pass |
-| C3 +50 ft/s | overshoot | ≤ 10 % | 4.28 % | 0.00 % | pass |
-| C3 | altitude deviation | ≤ 20 ft | 4.18 ft | 4.10 ft | pass |
-| C4 20 kt headwind change | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 2.08 ft / 348.6 s | pass |
-| C4 10 ft/s 1-cos gust | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 17.12 ft / 65.6 s | pass |
+| C2 +1,000 ft, anti-windup | overshoot | ≤ 15 % | n/a (saturates) | 3.08 % | pass |
+| C2 | 2 % settling | ≤ 120 s | n/a | 21.2 s | pass |
+| C2 | final \|e\| (last 10 s of 305 s) | ≤ 10 ft | n/a | 3.46 ft | pass |
+| C2 without anti-windup | overshoot / 2 % settling | anti-windup no worse on both | n/a | 4.61 % / 90.5 s | pass |
+| C3 +50 ft/s | overshoot | ≤ 10 % | 4.28 % | 4.22 % | pass |
+| C3 | 2 % settling | reported (should settle) | 11.0 s | 11.85 s | pass |
+| C3 | altitude deviation | ≤ 20 ft | 4.18 ft | 4.88 ft | pass |
+| C4 20 kt headwind change | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 2.36 ft / 136.8 s | pass |
+| C4 10 ft/s 1-cos gust | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 17.10 ft / 71.6 s | pass |
 | C5 | worst gain margin / phase margin over four loops | ≥ 6 dB / ≥ 45° | 18.14 dB / 52.80° | (design.py) | pass |
 
 C5 margins are broken one loop at a time with every other loop closed (`design.py`, `margins.json`; null = no finite lower-gain
@@ -402,10 +405,10 @@ Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limi
 | Run | Peak elevator position [deg] | Peak elevator rate [deg/s] | Throttle range |
 |---|---|---|---|
 | C1 | 5.70 | 60.00 | 0.165 … 0.240 |
-| C2 anti-windup | 14.07 | 60.00 | 0.161 … 0.514 |
+| C2 anti-windup | 14.85 | 60.00 | 0.152 … 0.534 |
 | C2 no anti-windup | 14.88 | 60.00 | 0.152 … 0.534 |
-| C3 | 0.73 | 0.14 | 0.154 … 1.000 |
-| C4 | 0.95 | 29.46 | 0.000 … 0.172 |
+| C3 | 0.74 | 0.17 | 0.152 … 1.000 |
+| C4 | 0.95 | 29.46 | 0.000 … 0.176 |
 
 ### Reading the results (review items)
 
@@ -417,19 +420,16 @@ Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limi
 - **The elevator rate limit is reached.** C1's peak elevator rate is 60.0 deg/s against the 60 deg/s limit: the first controller
   sample after the command asks for a larger elevator step than the actuator can follow. The design's linear model has no rate limit; the
   nonlinear C1 still matches it to a fraction of a percent of overshoot (table), so the limit is brief.
-- **C2 anti-windup is less oscillatory but much slower.** With back-calculation the overshoot is 0.00 %, against
-  4.61 % without, so the asserted ordering holds. But the anti-windup run never reaches the 2 % band in 305 s
-  and is still 75 ft short at the end, while the run without anti-windup settles in 90 s and ends 6.9 ft off.
-  Mechanism: while θ_cmd is saturated (peak 15.0°), back-calculation with t_t = 4 s drives the altitude integrator to
-  u_sat − k_p·e, a large negative value; as the error shrinks θ_cmd falls to trim long before the aircraft arrives, and the integrator
-  (k_i/k_p = 0.005 rad/s) then needs hundreds of seconds to remove the rest. The throttle does not saturate in this case (peak 0.51).
-  The tracking time is a `design.py` choice (t_t = 1/ω_c) and the lever for this behaviour; it was not changed here.
-- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the linear prediction (no limits) does
-  not apply: overshoot is 0.0 % (linear 4.3 %), and the airspeed has 2.3 ft/s of error left in the last 10 s of the 80 s
-  run (settled within 2 %: False), for the same back-calculation reason as C2. The PRD C3 targets (overshoot and altitude deviation) are met.
+- **C2 anti-windup works because the tracking times are matched to the integral times.** With anti-windup the overshoot is
+  3.08 % against 4.61 % without, it settles in 21.2 s against 90.5 s, and ends
+  within 3.46 ft of the command (θ_cmd saturates at 15.0°; the throttle peaks at 0.53 and does not saturate).
+  Back-calculation tracking times follow one rule, t_t = T_i = k_p/k_i for every PI loop (`design.py`, docs/design.md "M7b: anti-windup tracking times");
+  the first design used t_t = 1/ω_c, far below T_i, which let a saturated P term drag the altitude integrator negative and left the run short of its command.
+- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the first samples are limited; overshoot is
+  4.22 % (linear 4.28 %) and the airspeed settles within 2 % in 11.85 s (linear 11.0 s).
 - **C4 recovery definition.** "Returns within a 2 % band" is measured against 2 % of the peak deviation in the window that runs from a disturbance to the
   next one (or the end of the run). The gust is applied 500 s after the start so that the slow headwind transient (altitude recovery
-  349 s, airspeed 314 s) has died out. The headwind change is a time-aligned constant-wind step: the aircraft
+  137 s, airspeed 20 s) has died out. The headwind change is a time-aligned constant-wind step: the aircraft
   flies north and a 20 kt headwind (10.289 m/s) is added at t = 5 s, a step in air-relative speed because inertial velocity is continuous.
   The gust is the vertical 1-cos profile of the wind model with amplitude 10 ft/s, 5 s long.
 - **B1 closed loop.** `validation_tests` `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` integrates the budget-augmented state through 60 s of C1

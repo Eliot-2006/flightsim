@@ -208,8 +208,11 @@ def control(out: Path) -> dict:
     t.append(f"| C1 | steady-state \\|e\\| (last 10 s of {g('control.c1.t_final'):.0f} s) | ≤ 1 ft | {g('control.c1.lin_e300_ft'):.2f} ft (at 300 s) | {g('control.c1.sse_ft'):.2f} ft | {_mark(g('control.c1.sse_ft') <= 1)} |")
     t.append(f"| C1 | airspeed deviation | ≤ 5 ft/s | {g('control.c1.lin_peak_speed_fps'):.2f} ft/s | {g('control.c1.cross_ft'):.2f} ft/s | {_mark(g('control.c1.cross_ft') <= 5)} |")
     t.append(f"| C2 +1,000 ft, anti-windup | overshoot | ≤ 15 % | n/a (saturates) | {g('control.c2.overshoot'):.2f} % | {_mark(g('control.c2.overshoot') <= 15)} |")
-    t.append(f"| C2 | overshoot without anti-windup | > with | n/a | {g('control.c2n.overshoot'):.2f} % | {_mark(g('control.c2.overshoot') < g('control.c2n.overshoot'))} |")
+    t.append(f"| C2 | 2 % settling | ≤ 120 s | n/a | {g('control.c2.settling'):.1f} s | {_mark(g('control.c2.settled') and g('control.c2.settling') <= 120)} |")
+    t.append(f"| C2 | final \\|e\\| (last 10 s of {g('control.c2.t_final'):.0f} s) | ≤ 10 ft | n/a | {g('control.c2.sse_ft'):.2f} ft | {_mark(g('control.c2.sse_ft') <= 10)} |")
+    t.append(f"| C2 without anti-windup | overshoot / 2 % settling | anti-windup no worse on both | n/a | {g('control.c2n.overshoot'):.2f} % / {g('control.c2n.settling'):.1f} s | {_mark(g('control.c2.overshoot') <= g('control.c2n.overshoot') and (not g('control.c2n.settled') or g('control.c2.settling') <= g('control.c2n.settling')))} |")
     t.append(f"| C3 +50 ft/s | overshoot | ≤ 10 % | {g('control.c3.lin_overshoot'):.2f} % | {g('control.c3.overshoot'):.2f} % | {_mark(g('control.c3.overshoot') <= 10)} |")
+    t.append(f"| C3 | 2 % settling | reported (should settle) | {g('control.c3.lin_settling'):.1f} s | {g('control.c3.settling'):.2f} s | {_mark(g('control.c3.settled'))} |")
     t.append(f"| C3 | altitude deviation | ≤ 20 ft | {g('control.c3.lin_peak_alt_ft'):.2f} ft | {g('control.c3.cross_ft'):.2f} ft | {_mark(g('control.c3.cross_ft') <= 20)} |")
     for key, label in (("headwind", "20 kt headwind change"), ("gust", "10 ft/s 1-cos gust")):
         rec = g(f"control.c4.{key}.altitude_recovery")

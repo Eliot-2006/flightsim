@@ -325,7 +325,7 @@ For sample period T, error e = r − y, and stored integral I, the normal update
 `u_sat = clamp(u, umin, umax)`, and
 `I_k = I* + T (u_sat − u)/tt` when anti-windup is enabled (otherwise I_k = I*).
 Thus integration and back-calculation use forward Euler; the tracking update
-requires T < 2 tt for stability. Every generated tt exceeds T by at least 6.25×.
+requires T < 2 tt for stability. Every generated tt exceeds T by at least 25× (M7b tracking-time rule).
 Derivative action is on measurement, with its first measurement establishing
 history, so a setpoint step cannot kick D. Gains/limits and runtime inputs must
 be finite, tf ≥ 0, tt > 0, dt > 0, and umin ≤ umax; invalid inputs throw.
@@ -461,8 +461,8 @@ identical gains, margins and step JSON without timestamps or random choices.
 
 The committed artifact is `scenarios/control/autopilot_gains.toml` (all four seven-field
 PidGains tables, rate_hz, and the two crossfeed constants). Derivative gains are zero; tf = T = 0.02 s is
-recorded for each controller and has no effect with kd = 0. Tracking tt = 1/wc
-sets recovery on each loop's nominal response time. Generated
+recorded for each controller and has no effect with kd = 0. Tracking times follow the
+M7b rule (tt = Ti for PI loops; see "M7b: anti-windup tracking times"); the first design used tt = 1/wc. Generated
 `build/control_design/margins.json` contains the margin report and
 `build/control_design/linear_steps.json` contains C1 (+100 ft = 30.48 m) and
 C3 (+50 ft/s = 15.24 m/s) responses on a 0.1 s grid through 300 s. These are
@@ -532,11 +532,23 @@ for the M7 tuning review, all diagnosed, none changed (gains go through `design.
 1. *C1 steady state is horizon-limited.* The altitude PI zero at 0.005 rad/s leaves a tail of about 200 s; the linear model itself has
    |e| = 1.09 ft 55 s after the command and 0.32 ft at 300 s, and the nonlinear run agrees to 0.001 m. The C1 scenario runs the 300 s
    horizon of `linear_steps.json` (chosen from the linear prediction) and the 1 ft target is evaluated on its last 10 s.
-2. *Back-calculation with t_t = 1/ω_c makes saturating steps slow.* When P alone exceeds an actuator limit (C2: θ_cmd; C3: throttle,
-   k_p·ΔV = 1.09 > range), back-calculation drives the integrator to u_sat − k_p e, a large negative value that the loop's slow
-   k_i (altitude 8.6e-6, airspeed 7.2e-4) takes hundreds of seconds to undo. C2 with anti-windup overshoots less (asserted) but ends
-   far short of the command after 305 s; without it the response settles in about 90 s. C3's airspeed never settles within 2 % in
-   80 s, whereas a scratch run (not committed) with anti-windup off reproduced the linear prediction (overshoot ≈ 4.6 %, settling
-   ≈ 12.7 s). The tracking time t_t is the lever; PRD targets C2 (overshoot ≤ 15 %) and C3 (overshoot ≤ 10 %, altitude ≤ 20 ft) are met.
+2. *Back-calculation with t_t = 1/ω_c made saturating steps slow* (resolved, see "M7b: anti-windup tracking times" below). With the
+   first gains C2 ended 79 ft short after 305 s and C3 did not settle in 80 s, because t_t ≪ T_i.
 3. *The elevator rate limit (60°/s) is reached in C1* at the first post-command sample; the linear model ignores it, with negligible
    effect on the C1 comparison.
+
+### M7b: anti-windup tracking times
+
+The first C2 run exposed a design error, not a nonlinear effect. Back-calculation drives the integrator toward its saturated
+equilibrium `I* = u_sat − k_p e + t_t k_i e`. With `t_t = 1/ω_c` (altitude 4 s, airspeed 2.5 s, pitch rate 0.125 s) and integral times
+`T_i = k_p/k_i` of 200 s, 100 s and 5 s, the term `t_t k_i e` is negligible, so when the proportional term alone exceeded the limit
+(C2: θ_cmd; C3: throttle) the integrator was dragged to `u_sat − k_p e`, a large negative value that the slow `k_i` needed hundreds of
+seconds to remove: with anti-windup C2 ended 79 ft short after 305 s (no anti-windup: settled in 90.5 s) and C3 never settled in 80 s.
+The rule is now `t_t = T_i = 1/zero` for every PI loop (Åström–Hägglund; the PI limit of Åström–Murray's `√(T_i T_d)` with `T_d = 0`), i.e.
+altitude 200 s, airspeed 100 s, pitch rate 5 s. With `t_t = T_i` the saturated equilibrium is `I* = u_sat`: while saturated
+`dI/dt = (u_sat − I)/T_i`, so the integrator relaxes toward the limit instead of away from it and accumulates less than without
+anti-windup, and the loop recovers as soon as P leaves saturation. The P-only pitch loop has no integrator, so its `t_t` keeps the
+crossover time. `t_t` does not enter any linear analysis, so C5 margins, linear predictions and all other gains are byte-identical; the
+only change to `autopilot_gains.toml` is the three `tt` values. The stability condition `T < 2 t_t` holds with room (every `t_t` is at least 25 T). The rule was chosen from this analysis and applied once; nothing was tuned on the nonlinear model. Result (nonlinear, committed gains):
+C2 with anti-windup overshoots 3.08 % (4.61 % without), settles in 21.2 s (90.5 s without), ends 3.46 ft from the command; C3 overshoots 4.22 % and settles in
+11.85 s (linear 11.0 s). C1 is unchanged.

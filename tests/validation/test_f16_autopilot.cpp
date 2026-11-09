@@ -64,13 +64,24 @@ TEST(F16Autopilot, C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup) {
   const auto with = run("f16_ap_c2_alt1000.toml"), without = run("f16_ap_c2_alt1000_nowindup.toml");
   ASSERT_EQ(with.report.steps.size(), 1u);
   ASSERT_EQ(without.report.steps.size(), 1u);
+  const auto &a = with.report.steps[0].metrics, &n = without.report.steps[0].metrics;
   print("C2 anti-windup", with.report.steps[0]);
   print("C2 no anti-windup", without.report.steps[0]);
   EXPECT_TRUE(with.scenario.autopilot->antiwindup);
   EXPECT_FALSE(without.scenario.autopilot->antiwindup);
-  // PRD 8.7 C2: with anti-windup overshoot <= 15 %; without, windup is worse (more overshoot).
-  EXPECT_LE(with.report.steps[0].metrics.overshoot_pct, 15.0);
-  EXPECT_LT(with.report.steps[0].metrics.overshoot_pct, without.report.steps[0].metrics.overshoot_pct);
+  // PRD 8.7 C2: with anti-windup overshoot <= 15 %.
+  EXPECT_LE(a.overshoot_pct, 15.0);
+  // M7b review acceptance: the anti-windup run must also settle (2 % within 120 s) and end within 10 ft of
+  // the command (max |e| over the last 10 s of the 305 s run).
+  ASSERT_FALSE(std::isnan(a.settling_2pct_s)) << "anti-windup run never settled";
+  EXPECT_LE(a.settling_2pct_s, 120.0);
+  EXPECT_LE(a.steady_state_error, 10.0 * kFt);
+  // Anti-windup must be no worse than none on BOTH overshoot and settling time (an unsettled run counts as
+  // worse).
+  EXPECT_LE(a.overshoot_pct, n.overshoot_pct);
+  if (!std::isnan(n.settling_2pct_s)) {
+    EXPECT_LE(a.settling_2pct_s, n.settling_2pct_s);
+  }
 }
 
 TEST(F16Autopilot, C3AirspeedStep50fps) {
@@ -82,6 +93,8 @@ TEST(F16Autopilot, C3AirspeedStep50fps) {
   // PRD 8.7 C3: overshoot <= 10 %, altitude deviation <= 20 ft.
   EXPECT_LE(s.metrics.overshoot_pct, 10.0);
   EXPECT_LE(s.peak_cross_deviation, 20.0 * kFt);
+  // No target for C3 settling, but the airspeed must settle within the run (reported above).
+  EXPECT_FALSE(std::isnan(s.metrics.settling_2pct_s)) << "C3 airspeed never settled within 2 %";
 }
 
 TEST(F16Autopilot, C4GustAndHeadwindChangeRecoverWithinTwoPercentBand) {
