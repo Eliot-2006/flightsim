@@ -315,3 +315,240 @@ against 6e-5 and 6e-7 are 5.94017e-10 and 1.39313e-10, both below 1e-5. The
 1e-2 through 1e-10 sweep exhibits truncation, a flat region and roundoff; each
 matrix is normalized by its own maximum absolute entry. The generated report
 contains every TR1, LN1 and LN3 difference and the passing LN2 monitor evidence.
+
+### M7a: PID discrete form and engagement
+
+`control/pid.hpp` exposes the Task 7.1 `PidGains` and stateful `Pid` interface.
+For sample period T, error e = r − y, and stored integral I, the normal update is
+`D_k = (tf D_(k−1) + y_k − y_(k−1))/(tf + T)` (backward Euler derivative filter),
+`I* = I_(k−1) + T ki e_k`, `u = kp e_k + I* − kd D_k`,
+`u_sat = clamp(u, umin, umax)`, and
+`I_k = I* + T (u_sat − u)/tt` when anti-windup is enabled (otherwise I_k = I*).
+Thus integration and back-calculation use forward Euler; the tracking update
+requires T < 2 tt for stability. Every generated tt exceeds T by at least 25× (M7b tracking-time rule).
+Derivative action is on measurement, with its first measurement establishing
+history, so a setpoint step cannot kick D. Gains/limits and runtime inputs must
+be finite, tf ≥ 0, tt > 0, dt > 0, and umin ≤ umax; invalid inputs throw.
+
+`reset(u0)` defers initialization until the next measurement: clamp u0 to the
+output bounds, set D = 0 and I = u0 − kp e, and skip integration for that first
+sample. Its output is exactly the requested bounded u0 even with nonzero error.
+Construction alone starts with zero integral; explicit reset is the bumpless
+engagement operation. The runner should reset altitude to trim theta, pitch to
+trim q = 0, pitch-rate to trim elevator, and airspeed to trim throttle. These are
+absolute output commands; do not add trim offsets a second time. Disabling
+anti-windup only disables tracking, preserving the same saturation and PID law.
+
+### M7a: control operating point and linear model
+
+The orchestrator-selected condition in `scenarios/control/f16_ap_trim.toml` is the S&L
+model, V = **502 ft/s**, h = **10,000 ft**, gamma = 0, xcg = 0.35, SlAdc,
+g = data.g_sl = 32.17 ft/s², rotor on, actuators **enabled**, engine lag on,
+and controller rate **50 Hz**. This replaces the PRD's provisional sea-level-ish
+C-scenario point. Trim is alpha = 3.367607324° (theta = alpha), elevator =
+−0.656145669°, throttle = 0.168247601, power = 10.925999195 percent.
+
+Reproduce with `cmake --preset release`, `cmake --build --preset release`, then
+`cd python && uv run python -m control_design.design`. The script calls
+`flightsim linearize` using a temporary copy of the approved scenario with
+ideal surfaces, because the current CLI's trim and 13-state linearizer reject
+actuator-enabled models. The committed scenario remains actuator-enabled.
+This is an analysis-only bypass: Python restores the elevator lag
+`20.2/(s+20.2)` from `data/f16/f16_sl.toml`. The six-state longitudinal subset
+is `[V,alpha,theta,q,h,P]`, in SI, retaining the **engine power lag** from the
+full A/B matrices (no tabulated-engine or frozen-power substitution). The rotor
+is enabled during the Jacobian calculation; coupling through lateral states is
+neglected by the longitudinal reduction. Task 7.2 must assess that approximation.
+
+Both final command channels (elevator and throttle) include a first-order Padé
+approximation to the ZOH half-sample delay, `exp(−sT/2) ≈ (1−sT/4)/(1+sT/4)`.
+The cascade is evaluated synchronously within a controller tick, so only the
+physical commands incur this hold delay. Elevator position ±25° and rate 60°/s
+come from the data file; throttle limits are [0,1]. Position/rate saturation
+are inactive in the small-signal model and must be applied in the later runner.
+Aileron/rudder commands remain at trim; their dynamics do not enter this
+longitudinal design. Altitude output theta_cmd is limited to ±15°; pitch output
+q_cmd is limited to ±30°/s as a conservative command bound. The latter is a
+controller limit, not an inferred aircraft envelope.
+
+### M7a: loop choices and C5 margins
+
+Pitch rate feeds back q (rad/s) through a **PI** to elevator (rad). The negative
+control sign follows S&L's nose-down positive elevator. A zero at 0.2 rad/s
+provides low-frequency tracking while retaining phase at the 8 rad/s design
+frequency, below the actuator's 20.2 rad/s pole. With all other loops and the
+cross-feed closed, crossover is **8.22421 rad/s**, gain-increase margin
+**20.8791 dB**, gain-reduction margin **28.0552 dB**, and phase margin
+**52.7995°**.
+
+Pitch feeds back theta (rad) through **P** to q_cmd (rad/s). The theta kinematic
+integrator already provides steady pitch tracking; another controller integrator
+would add avoidable phase lag. Normalize at 2 rad/s after closing the rate loop.
+Final crossover is **1.90694 rad/s**, gain-increase margin **18.1372 dB**,
+gain-reduction margin **50.0779 dB**, and phase margin **74.4851°**. Its reference
+includes the measured-airspeed trim correction described below.
+
+Altitude feeds back h (m, up) through **PI** to theta_cmd (rad). Normalize at
+0.25 rad/s after closing the inner loops. A zero at 0.005 rad/s supplies steady
+altitude correction without a large integral overshoot; the small slow-pole
+residue now lies inside the 2% settling band. Final crossover is
+**0.251709 rad/s**, gain-increase margin **20.3648 dB**, and phase margin
+**65.0182°**. No finite lower-gain boundary was found. Actual nested-loop
+separations are **4.31×** and **7.58×**, both above the required 3× minimum.
+The combined pitch reference, including cross-feed, must be limited to ±15°.
+
+Airspeed feeds back air-relative V (m/s) through **PI** to throttle. Normalize at
+0.4 rad/s with the altitude cascade closed; the 0.01 rad/s zero gives steady
+thrust/drag balance while retaining phase through engine lag. The faster speed
+loop limits C1's speed excursion, and the trim-pitch cross-feed prevents that
+faster acceleration from lifting the aircraft away from its altitude command.
+Final crossover is **0.400000 rad/s**, gain-increase margin **47.3144 dB**,
+and phase margin **66.7198°**. No finite lower-gain boundary was found.
+
+### M7a: why one cross-feed is needed
+
+The plain cascade couples a speed change into altitude because the required
+level-flight trim alpha (and hence theta) falls as speed increases. Increasing
+altitude-loop gain to reject that lift transient worsens altitude-step overshoot;
+increasing its integral zero removes the tail but further increases overshoot.
+A deterministic differential-evolution exploration of the delayed linear model
+(seed 71, 140-member population, up to 250 generations) searched the four
+normalization frequencies and three PI zeros. Frequency bounds in rad/s were
+q [2,20], pitch [0.2,8], h [0.05,1.5], V [0.03,3]; zero bounds were q [1e-5,20],
+h [1e-6,2], V [1e-6,2]. The objective minimized the largest normalized C1/C3
+headroom violation with penalties for C5 or separation violations. No feasible
+plain-cascade candidate was found: its best compromise still had **9.67% C1
+overshoot, 4.83 ft/s speed excursion, and 18.12 ft C3 altitude excursion**,
+approximately 1.21 times the requested bounds. This is numerical design evidence,
+not a proof of global infeasibility. The much simpler static trim correction
+below resolves the coupling without another dynamic controller.
+
+Use exactly one cross-feed, from **measured airspeed** to the pitch reference:
+`theta_cmd = clamp(theta_altitude_PI + k_V (V − V_trim), −15°, +15°)`.
+Compute k_V from the CLI model's static trim differential: solve
+`A delta_x + B[:,(elevator,throttle)] delta_u = 0`, with delta_V = 1 m/s and
+delta_h = 0. The h-dot constraint enforces level flight; the power and actuator
+states enforce their equilibria. The solution gives
+**k_V = d theta_trim/d V = −0.001094945016 rad/(m/s)**, with
+**V_trim = 153.0096 m/s**. No fitted compensation or nonlinear trial is used.
+Measured speed rather than the stepped speed command avoids an immediate pitch
+kick before the aircraft accelerates. No altitude-to-throttle feed-forward is
+needed. The cross-feed adds no state, and is included when breaking each loop.
+For runner integration, the ±15° bound applies to the **combined** command;
+anti-windup tracking must account for that final bound, including the cross-feed.
+
+Synthesis proceeds inner to outer by setting each PI zero and solving the gain
+from the return-ratio magnitude at its chosen frequency. Future loops are open
+during that loop's synthesis. Final assessment breaks **one error channel at a
+time with every other loop closed**, including the airspeed/altitude cross
+coupling and measured-speed trim correction. The full longitudinal closed-loop poles must all lie strictly in the
+left half plane. Every loop meets C5 (GM ≥ 6 dB, PM ≥ 45°), with an additional
+≥6 dB reserve toward any lower-gain stability boundary. Because nested loops
+can have both increasing- and decreasing-gain instability, `margins.json`
+records both margins and all signed gain boundaries; it does not silently
+reinterpret a negative dB boundary as an upper margin. Null lower margins mean
+no finite boundary was found on the analysis frequency interval.
+
+Margins use state-space frequency responses over 10⁻⁵…10⁴ rad/s (6,000 logarithmic
+samples with interpolated crossing refinement), avoiding spurious crossings
+from ill-conditioned high-order polynomial conversion. Crossings beyond
+Nyquist are extrapolations of the Padé approximation; the limiting margins
+above occur below Nyquist. These are continuous approximations to a sampled
+system, not a discrete-time or nonlinear stability certificate. Generated gains
+use ten significant digits to remove insignificant compiler roundoff; the
+assessment and predictions consume those serialized values. Reruns produce
+identical gains, margins and step JSON without timestamps or random choices.
+
+The committed artifact is `scenarios/control/autopilot_gains.toml` (all four seven-field
+PidGains tables, rate_hz, and the two crossfeed constants). Derivative gains are zero; tf = T = 0.02 s is
+recorded for each controller and has no effect with kd = 0. Tracking times follow the
+M7b rule (tt = Ti for PI loops; see "M7b: anti-windup tracking times"); the first design used tt = 1/wc. Generated
+`build/control_design/margins.json` contains the margin report and
+`build/control_design/linear_steps.json` contains C1 (+100 ft = 30.48 m) and
+C3 (+50 ft/s = 15.24 m/s) responses on a 0.1 s grid through 300 s. These are
+**perturbations** from trim, with steps at t = 0: add the trim h and V for
+absolute overlays, and shift time to the runner's command event. No nonlinear
+run is used in design or acceptance tests.
+
+The final delayed linear predictions meet the orchestrator's headroom targets:
+
+| Case | Metric | Prediction | Linear design target |
+|---|---|---:|---:|
+| C1 +100 ft | Altitude overshoot | 4.3021% | ≤8% |
+| C1 | 2% settling | 16.3 s | ≤20 s |
+| C1 | Peak absolute speed excursion | 2.9582 ft/s | ≤4 ft/s |
+| C3 +50 ft/s | Speed overshoot | 4.2835% | ≤8% |
+| C3 | Peak absolute altitude excursion | 4.1807 ft | ≤15 ft |
+
+C3 also settles within 2% in 11.0 s. The previous 50.4 s C1 tail is removed
+from the settling band; no known linear target miss is deferred to Task 7.2.
+`generate()` refuses to emit a design that fails these targets, C5, pole
+stability, or bandwidth separation. Tests independently check the predicted
+traces against the specified bounds as well as reproducibility. Nonlinear
+verification, rate/position saturation and exact sampled-system behavior remain
+Task 7.2 checks; these linear results do not claim those checks have passed.
+
+### M7b: closed-loop runner, autopilot and nonlinear verification
+
+**Trim with actuators.** `trim_level` solves on an ideal-surface copy of the model, then returns the 17-state vector
+with the elevator/aileron/rudder states equal to the trimmed commands (`x17_from_x13` sets them from `u`) and the
+power state at its commanded steady value, so the actuator and power derivatives are zero to roundoff
+(`Trim.ActuatorEnabledTrimIsEquilibriumForActuatorAndPowerStates`). `flightsim trim` therefore accepts actuator-enabled
+scenarios; `linearize` still requires ideal surfaces, and `design.py` keeps its documented bypass.
+
+**Autopilot** (`control/autopilot.*`) is the M7a structure and gains verbatim: altitude PI → θ_cmd, plus the single cross-feed
+`k_V (V − V_ref)` on *measured air-relative* V, combined limit ±15° (the altitude gains' own bounds); pitch P → q_cmd; pitch-rate
+PI → elevator; airspeed PI → throttle. Measurements are x13 values (h, V, θ, q). The altitude PI is called with per-sample limits
+`[lo − xf, hi − xf]` (clamped into its own bounds), so its back-calculation tracks the *combined* bound, as M7a requires; this is
+the only change to `Pid` (an `update` overload taking limits; the 3-argument form forwards to it). `engage` resets the PIDs to
+trim: altitude → θ_trim − k_V(V − V_ref), pitch → 0, pitch rate → trim elevator, airspeed → trim throttle, so the first sample
+outputs the trim command exactly (`EngageIsBumplessAndHoldsTrimAtZeroError`). Unit tests pin the signs and the cross-feed with
+hand-computed values from the committed gains.
+
+**Runner.** `run_aircraft` calls the controller before the integration step that starts on a sample instant
+(`k % steps_per_sample == 0`) and holds `u` until the next sample. `dt_s` must divide `1/rate_hz` (load error), and
+`autopilot.rate_hz` must equal the rate the gains were designed for (load error). Commands are absolute setpoints
+(`[[commands]] kind, t_s, value_ft|value_m|value_fps|value_mps`), picked up at the first controller sample at or after `t_s`; before
+a command the setpoint is the trimmed value. `[[inputs]]` and `[autopilot]` are mutually exclusive. The headwind change is a
+time-aligned constant-wind step, `[[wind.steps]] t_s, delta_mps`: the wind in effect over a step is the base constant plus all steps
+with `t_s ≤ t` (`constant_wind_at`), and `t_s` is a multiple of `dt_s`, so no step straddles it.
+
+**Metrics** (`control/metrics.*`, pure functions; `control_report` assembles them): overshoot = max excursion past the final value in
+the step direction, % of |step|; 2 % settling = time from the command to the first sample after which |y − y_final| stays within
+2 % of |step| (null if never); steady-state error = max |y − y_final| over the last 10 s of the record; the other loop's peak error;
+actuator peaks over every integration step. Disturbance metrics use windows from one disturbance to the next: peak |y − command| and
+the time to stay within 2 % of that peak. Metrics are written to `metadata.json` under `control`; a time that was not reached is
+omitted and flagged `*_reached = false` (JSON has no NaN).
+
+**B1 closed loop.** `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` integrates `[x17 | W_nc]` through 60 s of C1 with the controller
+in the loop. The balance holds per step because the controller is outside the derivative: inputs are constants within a step
+(sample and hold, `dt` divides the period), so each step integrates the same smooth ODE as the open-loop run, and
+d(E − W_nc)/dt = 0 holds for that ODE under any input; the controller only changes the constants between steps, while E and W_nc
+are functions of the continuous state. The test's hand-rolled loop is checked against `run_aircraft` (same final state).
+
+**Nonlinear results and what they say about the design.** C1 matches the linear prediction closely (see results.md). Three items
+for the M7 tuning review, all diagnosed, none changed (gains go through `design.py`):
+
+1. *C1 steady state is horizon-limited.* The altitude PI zero at 0.005 rad/s leaves a tail of about 200 s; the linear model itself has
+   |e| = 1.09 ft 55 s after the command and 0.32 ft at 300 s, and the nonlinear run agrees to 0.001 m. The C1 scenario runs the 300 s
+   horizon of `linear_steps.json` (chosen from the linear prediction) and the 1 ft target is evaluated on its last 10 s.
+2. *Back-calculation with t_t = 1/ω_c made saturating steps slow* (resolved, see "M7b: anti-windup tracking times" below). With the
+   first gains C2 ended 79 ft short after 305 s and C3 did not settle in 80 s, because t_t ≪ T_i.
+3. *The elevator rate limit (60°/s) is reached in C1* at the first post-command sample; the linear model ignores it, with negligible
+   effect on the C1 comparison.
+
+### M7b: anti-windup tracking times
+
+The first C2 run exposed a design error, not a nonlinear effect. Back-calculation drives the integrator toward its saturated
+equilibrium `I* = u_sat − k_p e + t_t k_i e`. With `t_t = 1/ω_c` (altitude 4 s, airspeed 2.5 s, pitch rate 0.125 s) and integral times
+`T_i = k_p/k_i` of 200 s, 100 s and 5 s, the term `t_t k_i e` is negligible, so when the proportional term alone exceeded the limit
+(C2: θ_cmd; C3: throttle) the integrator was dragged to `u_sat − k_p e`, a large negative value that the slow `k_i` needed hundreds of
+seconds to remove: with anti-windup C2 ended 79 ft short after 305 s (no anti-windup: settled in 90.5 s) and C3 never settled in 80 s.
+The rule is now `t_t = T_i = 1/zero` for every PI loop (Åström–Hägglund; the PI limit of Åström–Murray's `√(T_i T_d)` with `T_d = 0`), i.e.
+altitude 200 s, airspeed 100 s, pitch rate 5 s. With `t_t = T_i` the saturated equilibrium is `I* = u_sat`: while saturated
+`dI/dt = (u_sat − I)/T_i`, so the integrator relaxes toward the limit instead of away from it and accumulates less than without
+anti-windup, and the loop recovers as soon as P leaves saturation. The P-only pitch loop has no integrator, so its `t_t` keeps the
+crossover time. `t_t` does not enter any linear analysis, so C5 margins, linear predictions and all other gains are byte-identical; the
+only change to `autopilot_gains.toml` is the three `tt` values. The stability condition `T < 2 t_t` holds with room (every `t_t` is at least 25 T). The rule was chosen from this analysis and applied once; nothing was tuned on the nonlinear model. Result (nonlinear, committed gains):
+C2 with anti-windup overshoots 3.08 % (4.61 % without), settles in 21.2 s (90.5 s without), ends 3.46 ft from the command; C3 overshoots 4.22 % and settles in
+11.85 s (linear 11.0 s). C1 is unchanged.

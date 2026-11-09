@@ -1,0 +1,40 @@
+# Matched-model scenario for the JSBSim comparison (PRD 8.6): us76, inverse-square gravity with the same
+# g0 and R as reference/jsbsim/planet/flat_nonrot.xml (R = 20925646.32546 ft = 6378137 m), no rotor, actuators off.
+[aircraft]
+data = "data/f16/f16_sl.toml"
+xcg = 0.35
+atmosphere = "us76"
+gravity = { g0 = 9.80665, R = 6378137.000000209 }
+rotor = false
+actuators = false
+
+[trim]
+V_fps = 502.0
+h_ft = 10000.0
+gamma_deg = 0.0
+
+# RK4 at dt = 1/2400 s; output every 0.01 s to match the JSBSim CSV sample times. J3 runs at 10,000 ft: from h = 0
+# the maneuvers dip below the thrust table's lower altitude edge (S&L extrapolates, JSBSim clamps -> not comparable).
+[sim]
+integrator = "rk4"
+dt_s = 0.0004166666666666667
+t_final_s = 20.0
+output_every = 24
+stop_at_ground = true
+
+[initial]
+from_trim = true
+
+[[inputs]]
+channel = "de"
+t_start_s = 1.0
+t_end_s = 2.0
+value = 1.0  # deg
+mode = "add"
+
+[[inputs]]
+channel = "de"
+t_start_s = 2.0
+t_end_s = 3.0
+value = -1.0  # deg
+mode = "add"

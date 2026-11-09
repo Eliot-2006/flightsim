@@ -337,7 +337,7 @@ Scenarios at the S&L 502 ft/s sea-level-ish trim, with actuators and engine lag 
 | ID | Scenario | Metric targets |
 |---|---|---|
 | C1 | +100 ft altitude step | Overshoot ≤ 10 %; 2 % settling ≤ 25 s; steady-state |e| ≤ 1 ft; airspeed deviation ≤ 5 ft/s |
-| C2 | +1,000 ft altitude step (saturating θ_cmd and throttle) | With anti-windup: overshoot ≤ 15 %; without: windup visibly worse (plotted side-by-side) |
+| C2 | +1,000 ft altitude step (saturating θ_cmd; throttle may or may not saturate) | With anti-windup: overshoot ≤ 15 %, 2 % settling ≤ 120 s, final |e| ≤ 10 ft; anti-windup no worse than no-anti-windup on both overshoot and settling (amended at M7 review: the first implementation met overshoot but never settled); plotted side-by-side |
 | C3 | +50 ft/s airspeed step at constant altitude | Overshoot ≤ 10 %, altitude deviation ≤ 20 ft |
 | C4 | Vertical 1-cos gust (amplitude 10 ft/s) and constant 20-kt headwind change | Peak altitude deviation and recovery time reported; returns within 2 % band |
 | C5 | Linear-model loop margins | Gain margin ≥ 6 dB, phase margin ≥ 45° per loop (broken one loop at a time) |

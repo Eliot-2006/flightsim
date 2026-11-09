@@ -19,6 +19,9 @@ if(NOT FLIGHTSIM_GIT_SHA)
 endif()
 
 add_library(flightsim_core STATIC
+  src/flightsim/control/pid.cpp
+  src/flightsim/control/autopilot.cpp
+  src/flightsim/control/metrics.cpp
   src/flightsim/version.cpp
   src/flightsim/math/quat.cpp
   src/flightsim/math/elliptic.cpp
@@ -32,6 +35,7 @@ add_library(flightsim_core STATIC
   src/flightsim/analysis/modes.cpp
   src/flightsim/analysis/trim.cpp
   src/flightsim/sim/aircraft_scenario.cpp
+  src/flightsim/sim/aircraft_runner.cpp
   src/flightsim/analysis/flight_vars.cpp
   src/flightsim/env/atmosphere.cpp
   src/flightsim/env/wind.cpp
@@ -57,7 +61,11 @@ enable_testing()
 include(GoogleTest)
 
 add_executable(unit_tests
+  tests/unit/test_pid.cpp
+  tests/unit/test_autopilot.cpp
+  tests/unit/test_metrics.cpp
   tests/unit/test_trim.cpp
+  tests/unit/test_aircraft_runner.cpp
   tests/unit/test_smoke.cpp
   tests/unit/test_quat.cpp
   tests/unit/test_frames.cpp
@@ -80,6 +88,7 @@ target_compile_definitions(unit_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOUR
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 
 add_executable(validation_tests
+  tests/validation/test_f16_autopilot.cpp
   tests/validation/test_f16_linear.cpp
   tests/validation/test_f16_trim.cpp
   tests/validation/test_smoke_validation.cpp
@@ -93,10 +102,14 @@ target_compile_definitions(validation_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAK
 gtest_discover_tests(validation_tests PROPERTIES LABELS validation)
 
 # Own executable: it replaces global operator new to count allocations.
-add_executable(alloc_tests tests/alloc/test_no_alloc.cpp)
-target_link_libraries(alloc_tests PRIVATE flightsim_core GTest::gtest_main)
-flightsim_target_options(alloc_tests)
-gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
+# The allocation counter replaces global operator new/delete, which conflicts with the sanitizer allocator
+# (ASan reports alloc-dealloc-mismatch). It runs in every non-sanitizer build.
+if(NOT FLIGHTSIM_SANITIZE)
+  add_executable(alloc_tests tests/alloc/test_no_alloc.cpp)
+  target_link_libraries(alloc_tests PRIVATE flightsim_core GTest::gtest_main)
+  flightsim_target_options(alloc_tests)
+  gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
+endif()
 
 add_executable(bench_flightsim bench/bench_integrators.cpp)
 target_link_libraries(bench_flightsim PRIVATE flightsim_core benchmark::benchmark)

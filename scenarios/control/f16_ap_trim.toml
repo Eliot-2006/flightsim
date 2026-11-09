@@ -1,0 +1,15 @@
+# M7 control operating point. Controller: 50 Hz; engine lag is always active.
+# design.py temporarily bypasses surfaces for the CLI's 13-state Jacobian,
+# then restores data-file actuator lag and the ZOH delay in Python.
+[aircraft]
+data = "data/f16/f16_sl.toml"
+xcg = 0.35
+atmosphere = "sl_adc"
+gravity = "sl"
+rotor = true
+actuators = true
+
+[trim]
+V_fps = 502.0
+h_ft = 10000.0
+gamma_deg = 0.0

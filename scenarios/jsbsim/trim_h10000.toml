@@ -1,0 +1,14 @@
+# Matched-model scenario for the JSBSim comparison (PRD 8.6): us76, inverse-square gravity with the same
+# g0 and R as reference/jsbsim/planet/flat_nonrot.xml (R = 20925646.32546 ft = 6378137 m), no rotor, actuators off.
+[aircraft]
+data = "data/f16/f16_sl.toml"
+xcg = 0.35
+atmosphere = "us76"
+gravity = { g0 = 9.80665, R = 6378137.000000209 }
+rotor = false
+actuators = false
+
+[trim]
+V_fps = 502.0
+h_ft = 10000.0
+gamma_deg = 0.0

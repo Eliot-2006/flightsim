@@ -59,6 +59,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # Control design consumes the real CLI Jacobian; report tests also run benchmarks.
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: cmake --preset release
+      - run: cmake --build --preset release --target flightsim bench_flightsim -j 2
       - run: cd python && uv sync --frozen && uv run pytest
 
   bench:
@@ -77,3 +81,19 @@ jobs:
         with:
           name: bench-json
           path: bench.json
+
+  jsbsim:
+    # PRD 8.6 / plan Task 6.3: regenerate the JSBSim model and every JSBSim run, assert they equal the committed
+    # references (1e-9), re-run our side, and assert J1-J3.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        with:
+          path: build/release/_deps
+          key: deps-jsbsim-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - run: cmake --preset release
+      - run: cmake --build --preset release -j --target flightsim
+      - uses: astral-sh/setup-uv@v5
+      - run: cd python && uv sync --frozen && uv run python -m jsbsim_compare.compare --check

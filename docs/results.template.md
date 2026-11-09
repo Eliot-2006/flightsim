@@ -120,4 +120,149 @@ the table takes the larger A/B change against the preceding 10ε step. The figur
 |---|---|
 {{linear.ln3.table}}
 
-JSBSim cross-validation and autopilot results follow in M6–M7.
+## JSBSim cross-validation (J1–J3)
+
+The matched model of PRD §8.6: JSBSim runs a generated copy of the same S&L tables (`python/jsbsim_compare/gen_xml.py`),
+on a non-rotating spherical planet with standard (inverse-square) gravity. Our side uses `atmosphere = us76`,
+gravity `{g0 = 9.80665, R = 6378137 m}` (the planet file's R), `rotor = false`, `xcg = 0.35`, ideal surfaces, RK4 at
+dt = 1/2400 s (and 1/1200 s for our own discretization line). JSBSim uses AB3 for the rates and translational position,
+trapezoidal rotational position, at 1/2400 s and 1/4800 s (JSBSim has no RK4; PRD §8.6 amendment).
+Both sides log every 0.01 s, so every comparison is at identical sample times (largest time mismatch {{jsbsim.sampling.mismatch:.1e}} s).
+J1 and J2 run at sea level and 10,000 ft; J3 runs at 10,000 ft because from sea level the maneuvers dip below the thrust table's
+lower altitude edge (S&L extrapolates, JSBSim clamps, so the cases would not be comparable); the monitor assertion below enforces that
+both sides stay inside every table. Reproduce with `cd python && uv run python -m jsbsim_compare.compare --check`.
+
+### J1: JSBSim accelerations at our trim state
+
+JSBSim is initialised at our trim state and controls and asked for its body-axis accelerations after `run_ic()`.
+Criteria (initial targets, PRD §8.6): |u̇|, |ẇ| < 1e-3 ft/s², |q̇| < 1e-5 rad/s². Result: **{{jsbsim.j1.status}}**.
+The ẇ offset is accounted for by the density difference between the two US76 implementations at that altitude
+(column "ẇ predicted from ρ": −g·(ρ_JSBSim − ρ_ours)/ρ_ours); our own accelerations at the same state are at round-off.
+
+| h [ft] | JSBSim u̇ [ft/s²] | JSBSim ẇ [ft/s²] | JSBSim q̇ [rad/s²] | ẇ predicted from ρ [ft/s²] | ours ẇ [ft/s²] | Result |
+|---|---|---|---|---|---|---|
+{{jsbsim.j1.table}}
+
+### J2: each simulator's own trim
+
+Level flight at 502 ft/s. JSBSim's trim is its own `do_simple_trim` (full trim) with the generated dummy engine. Criterion: within 0.1 %. Result: **{{jsbsim.j2.status}}**.
+
+| h [ft] | Quantity | flightsim | JSBSim | Relative difference | Result |
+|---|---|---|---|---|---|
+{{jsbsim.j2.table}}
+
+### J3: open-loop responses from each simulator's own trim
+
+502 ft/s, {{jsbsim.atm.h_ft}} ft, 20 s. Deviations from trim, difference metric `max|Δ_ours − Δ_JSBSim| / max|Δ_JSBSim|` over the
+common sample times; criterion ≤ 2 % per signal (PRD §8.6). A signal whose JSBSim peak is below 1e-6 is round-off, not a response ("not excited").
+The last column is how much JSBSim's own deviation changes when its step is halved (its discretization error, same normalisation).
+Result: **{{jsbsim.j3.status}}**; largest difference {{jsbsim.j3.worst:.3f}} % ({{jsbsim.j3.worst_where}}).
+
+| Case | Signal | JSBSim peak deviation | flightsim − JSBSim [% of peak] | JSBSim dt halving [% of peak] | Result |
+|---|---|---|---|---|---|
+{{jsbsim.j3.table}}
+
+The overlays are in `out/index.html` (J3 figures).
+
+### Discrepancy budget
+
+Each source is toggled or bounded on its own; the table gives the largest change of the J3 metric over the three cases, in
+percentage points of the signal's peak deviation (columns are signals; "—" = not excited).
+
+| Source | ΔV | Δα | Δq | Δθ | Δh | Δβ | Δp | Δr | Δφ |
+|---|---|---|---|---|---|---|---|---|---|
+{{jsbsim.budget.table}}
+
+How each row is obtained:
+
+- **JSBSim step**: the same J3 metric against the 1/4800 s JSBSim run (committed CSV).
+- **Our RK4 step**: our scenario at 1/1200 s instead of 1/2400 s.
+- **Gravity**: our gravity law replaced by constant g0 (`R = inf`); the inverse-square law matters because JSBSim's planet has it.
+- **Atmosphere**: the two US76 implementations differ at {{jsbsim.atm.h_ft}} ft by the amounts below. Our model has no density knob, so a probe
+  (our `sl_adc` atmosphere, ρ off by {{jsbsim.atm.probe_rel_rho:.2e}} relative) gives the sensitivity of the metric, scaled linearly to the measured mismatch.
+- **Curvature**: JSBSim's spherical Earth makes its attitude hold drift relative to the local horizontal. The measured effect is JSBSim's own
+  no-input run (committed trim-hold CSV), subtracted from its maneuver deviations; the kinematic estimate below validates it.
+- **Residual trim mismatch**: our run started from JSBSim's trim values (α, θ, throttle, δe) instead of our own trim (the J2 differences).
+- **Sampling**: time mismatch × the signal's peak rate ÷ its peak (both sides log on the same grid).
+- **Table edges**: zero by construction: both sides are asserted inside every table's domain (our lookup monitor; JSBSim's α, |β|, δe against the table axes).
+- **Unexplained remainder**: J3 metric with JSBSim at 1/4800 s, its no-input drift removed, and ours started from JSBSim's trim: all
+  corrections at once. The largest remaining difference is **{{jsbsim.remainder.worst:.3f}} %** ({{jsbsim.remainder.where}}); the next largest is
+  {{jsbsim.remainder.second:.3f}} %, and the criterion is 2 %. In that case the step-size effects of both simulators together move the metric by at most
+  {{jsbsim.remainder.steps:.3f}} percentage points, so the remainder is not discretization error. It is **not attributed to a tested source**:
+  two candidates were not isolated: the curvature correction is additive (first order) while the aileron pulse swings the attitude by tens of
+  degrees, and small convention differences between the two implementations of the same tables (for example the degree/radian constant,
+  57.29578 against 180/π, a relative 8.5e-8, far too small to matter at this level but not toggled).
+
+| Quantity at {{jsbsim.atm.h_ft}} ft | flightsim US76 | JSBSim `atmosphere/*` | Relative difference |
+|---|---|---|---|
+{{jsbsim.atm.table}}
+
+Earth curvature, kinematic estimate (body keeps its inertial attitude and flies straight on a non-rotating sphere:
+Δh = V²t²/2(R+h), Δθ = +Vt/(R+h), ΔV = −gVt²/2(R+h)) against JSBSim's measured no-input drift. At 5 s the estimate holds; at 20 s
+aerodynamic feedback has grown the drift beyond the kinematic terms, which is why the measured drift is what the budget subtracts.
+
+| t [s] | Quantity | Kinematic estimate | JSBSim measured drift |
+|---|---|---|---|
+{{jsbsim.curv.table}}
+
+## Control (M7)
+
+Operating point: S&L model, 502 ft/s, 10,000 ft, x_cg = 0.35, actuators (lag, rate and position limits) and engine lag on, 50 Hz
+sampled autopilot with outputs held between samples, RK4 at dt = 0.01 s. Structure and gains are exactly those of `docs/design.md`
+(M7a): altitude PI → θ_cmd (plus the airspeed→pitch cross-feed, combined ±15° limit) → pitch P → pitch-rate PI → elevator;
+airspeed PI → throttle. The gains are the committed `scenarios/control/autopilot_gains.toml` (reproduced byte-for-byte by
+`design.py`); nothing was tuned on the nonlinear model. All five runs are free of table-domain violations: **{{control.all_clean}}** (True = the
+lookup monitor stayed clean in every run).
+
+### Targets against measurements (PRD §8.7)
+
+Measured values are computed by the C++ runner (`control/metrics.cpp`, written to each run's `metadata.json`); the linear column is
+`design.py`'s delayed linear prediction (step at t = 0, no saturation).
+
+| Case | Metric | Target | Linear prediction | Measured | Result |
+|---|---|---|---|---|---|
+{{control.table}}
+
+C5 margins are broken one loop at a time with every other loop closed (`design.py`, `margins.json`; null = no finite lower-gain
+boundary found):
+
+| Loop | Crossover [rad/s] | Gain-increase margin [dB] | Gain-reduction margin [dB] | Phase margin [deg] | Result |
+|---|---|---|---|---|---|
+{{control.c5.table}}
+
+Figures in `out/index.html`: C1–C3 nonlinear against the linear prediction, C2 anti-windup against no anti-windup, C4 disturbance
+rejection, and actuator usage.
+
+### Actuator usage (per integration step, C++)
+
+Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limited to [0, 1].
+
+| Run | Peak elevator position [deg] | Peak elevator rate [deg/s] | Throttle range |
+|---|---|---|---|
+{{control.usage.table}}
+
+### Reading the results (review items)
+
+- **C1 steady state is horizon-limited, not a nonlinear effect.** The altitude PI zero (0.005 rad/s) leaves a tail of roughly 200 s. 55 s
+  after the command the nonlinear |e| is {{control.c1.nl_e55_ft:.2f}} ft and the design's linear model predicts {{control.c1.lin_e55_ft:.2f}} ft, so a
+  60 s record would miss the 1 ft target in both. The scenario therefore runs {{control.c1.t_final:.0f}} s (the 300 s horizon of the linear
+  prediction; the linear model gives {{control.c1.lin_e300_ft:.2f}} ft there) and the target is met on the last 10 s. This horizon was chosen from
+  the linear prediction; no gain was changed.
+- **The elevator rate limit is reached.** C1's peak elevator rate is {{control.c1.rate_dps:.1f}} deg/s against the 60 deg/s limit: the first controller
+  sample after the command asks for a larger elevator step than the actuator can follow. The design's linear model has no rate limit; the
+  nonlinear C1 still matches it to a fraction of a percent of overshoot (table), so the limit is brief.
+- **C2 anti-windup works because the tracking times are matched to the integral times.** With anti-windup the overshoot is
+  {{control.c2.overshoot:.2f}} % against {{control.c2n.overshoot:.2f}} % without, it settles in {{control.c2.settling:.1f}} s against {{control.c2n.settling:.1f}} s, and ends
+  within {{control.c2.sse_ft:.2f}} ft of the command (θ_cmd saturates at {{control.c2.theta_cmd_max_deg:.1f}}°; the throttle peaks at {{control.c2.throttle_max:.2f}} and does not saturate).
+  Back-calculation tracking times follow one rule, t_t = T_i = k_p/k_i for every PI loop (`design.py`, docs/design.md "M7b: anti-windup tracking times");
+  the first design used t_t = 1/ω_c, far below T_i, which let a saturated P term drag the altitude integrator negative and left the run short of its command.
+- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the first samples are limited; overshoot is
+  {{control.c3.overshoot:.2f}} % (linear {{control.c3.lin_overshoot:.2f}} %) and the airspeed settles within 2 % in {{control.c3.settling:.2f}} s (linear {{control.c3.lin_settling:.1f}} s).
+- **C4 recovery definition.** "Returns within a 2 % band" is measured against 2 % of the peak deviation in the window that runs from a disturbance to the
+  next one (or the end of the run). The gust is applied {{control.c4.gust.t_s:.0f}} s after the start so that the slow headwind transient (altitude recovery
+  {{control.c4.headwind.altitude_recovery:.0f}} s, airspeed {{control.c4.headwind.airspeed_recovery:.0f}} s) has died out. The headwind change is a time-aligned constant-wind step: the aircraft
+  flies north and a 20 kt headwind (10.289 m/s) is added at t = 5 s, a step in air-relative speed because inertial velocity is continuous.
+  The gust is the vertical 1-cos profile of the wind model with amplitude 10 ft/s, 5 s long.
+- **B1 closed loop.** `validation_tests` `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` integrates the budget-augmented state through 60 s of C1
+  and asserts `|ΔE − W_nc| / max|ΔE| < 1e-6` at dt = 0.01 s (the measured ratio is printed by the test). It holds step by step because the controller sits outside the derivative:
+  inputs are constants within a step, so each step is the same smooth ODE as the open-loop budget run, and E − W_nc is conserved by it for any input history.
