@@ -147,14 +147,14 @@ TEST(F16AutopilotB1, ClosedLoopWorkEnergyBalance60s) {
 
   const double dt = s.run->dt;
   const long n = std::lround(s.run->t_final / dt);
-  const auto measure = [&](double t, const Vec<17>& x) {
+  const auto measure = [&](double t, const Vec<17>& x, const F16Input& held) {
     const Vec<13> c = x13_from_x17(m, x, t);
-    return ApMeasurement{c(11), c(0), c(4), c(7)};
+    return ApMeasurement{c(11), c(0), c(4), c(7), m.actuators ? x(ac::kDe) : held.de};
   };
   Autopilot ap(s.autopilot->gains, s.autopilot->antiwindup);
   Vec<18> x = Vec<18>::Zero();
   x.head<17>() = tr.x;
-  const ApMeasurement m0 = measure(0, tr.x);
+  const ApMeasurement m0 = measure(0, tr.x, tr.u);
   ap.engage(m0, tr.u);
   ApCommand cmd{m0.h, m0.V};
   F16Input u = tr.u;
@@ -168,7 +168,7 @@ TEST(F16AutopilotB1, ClosedLoopWorkEnergyBalance60s) {
           (c.kind == sim::Command::Altitude ? cmd.h : cmd.V) = c.value;
         }
       }
-      u = ap.update(measure(t, x.head<17>()), cmd).u;
+      u = ap.update(measure(t, x.head<17>(), u), cmd).u;
     }
     const auto f = [&](double time, const Vec<18>& state) -> Vec<18> {
       const Vec<17> a = state.head<17>();

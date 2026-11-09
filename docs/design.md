@@ -245,6 +245,7 @@ where ours is -0.00025372513 (difference +4.62749e-5); the two small B entries
 print -0.0021/-0.0022, where ours is -0.0020501361/-0.0021507102. These are
 within one last printed digit. Relative bounds remain 1% for textbook values
 and 2% for tutorial matrices. No tolerance or source number has been changed.
+(The tests now enforce tighter regression bounds; see "Post-M7 review fixes".)
 The small rotational differences remain consistent with the rounded-inertia
 finding in A1; there is no calibration of the production inertia.
 
@@ -323,7 +324,9 @@ For sample period T, error e = r − y, and stored integral I, the normal update
 `D_k = (tf D_(k−1) + y_k − y_(k−1))/(tf + T)` (backward Euler derivative filter),
 `I* = I_(k−1) + T ki e_k`, `u = kp e_k + I* − kd D_k`,
 `u_sat = clamp(u, umin, umax)`, and
-`I_k = I* + T (u_sat − u)/tt` when anti-windup is enabled (otherwise I_k = I*).
+`I_k = I* + T (u_sat − u)/tt` when anti-windup is enabled (otherwise I_k = I*). Post-M7: with ki = 0 there is
+no integrator (no tracking, and reset stores none), and the pitch-rate loop tracks the measured elevator instead of
+`u_sat` (see "Post-M7 review fixes").
 Thus integration and back-calculation use forward Euler; the tracking update
 requires T < 2 tt for stability. Every generated tt exceeds T by at least 25× (M7b tracking-time rule).
 Derivative action is on measurement, with its first measurement establishing
@@ -552,3 +555,37 @@ crossover time. `t_t` does not enter any linear analysis, so C5 margins, linear 
 only change to `autopilot_gains.toml` is the three `tt` values. The stability condition `T < 2 t_t` holds with room (every `t_t` is at least 25 T). The rule was chosen from this analysis and applied once; nothing was tuned on the nonlinear model. Result (nonlinear, committed gains):
 C2 with anti-windup overshoots 3.08 % (4.61 % without), settles in 21.2 s (90.5 s without), ends 3.46 ft from the command; C3 overshoots 4.22 % and settles in
 11.85 s (linear 11.0 s). C1 is unchanged.
+
+### Post-M7 review fixes
+
+An independent review raised five items; all are fixed without changing any gain, scenario or data value.
+
+1. **P-only loops store no integrator state.** Back-calculation previously ran on every loop, including the P-only pitch loop
+   (`ki = 0`). Once that loop saturated (|θ error| > 14.2°), `I += T (u_sat − u)/tt` built an offset that nothing removed: out of
+   saturation `u_sat = u` and `ki e = 0`. `reset(u0)` likewise stored `I = u0 − kp e`. Now a `ki = 0` loop never tracks, and reset
+   stores no integrator: the first output after reset is still exactly `u0` (bumpless engage), and later outputs follow the plain
+   P(D) law. C1–C4 never saturated the pitch loop (C2 peak q_cmd 0.429 against 0.524 rad/s), so this was latent
+   (`Pid.ProportionalOnlyLoopKeepsNoBiasAfterSaturationOrReset`).
+2. **Pitch-rate anti-windup tracks the actual elevator.** The pitch-rate PI tracked its own ±25° command clamp. But the actuator
+   (60°/s, lag 20.2/s) lags a saturated command: in C2 the command reached −25° while the surface reached −14.7°. A new
+   `Pid::update(..., applied)` overload back-calculates on `applied − u`. `ApMeasurement::de` carries the applied elevator, which
+   is the actuator state when actuators are modelled and the held command for ideal surfaces, sampled with the other
+   measurements. In unsaturated flight the actuator lag only shifts the integrator by about −(τ_act + T)/t_t ≈ −1.4 % of each
+   command change (τ_act = 1/20.2 s, T = 0.02 s, t_t = 5 s), so the linear design and C5 margins stand and `design.py` and the
+   gains are unchanged
+   (`Pid.BackCalculationOnAppliedOutputBoundsIntegratorUnderRateLimit`,
+   `Autopilot.PitchRateBackCalculationTracksTheMeasuredElevator`). C1–C4 after the change: C1 overshoot 4.36 % (was 4.47 %),
+   settling 16.35 s (16.45 s), steady-state 0.335 ft (0.333 ft); C2 3.06 % (3.08 %), 21.25 s (21.2 s), final 3.48 ft (3.46 ft);
+   C2 without anti-windup is unchanged (no tracking); C3 4.218 % (4.217 %), 11.85 s; C4 headwind altitude peak 2.365 ft (2.362 ft),
+   recovery 136.6 s (136.8 s), gust unchanged to 0.01 ft. Every PRD 8.7 target still passes.
+3. **TR1 regression bound.** The PRD acceptance rule (one last printed digit or 0.5 % relative, whichever is larger) is unchanged.
+   The test now enforces max(2× observed, one printed digit), which is the printed digit for every TR1 value, since the largest
+   observed difference is 0.48 digit. The 0.5 % term had been about 17× the worst observed relative difference (2.8e-4).
+4. **LN1 regression bounds** (same rule): eigenvalues max(2.5e-4 relative, digit), where only the short-period imaginary part
+   (1.16e-4 relative) exceeds its digit; lateral textbook matrix max(2e-3 relative, digit), worst entry outside its digit 9.23e-4;
+   tutorial longitudinal A/B the printed digit alone, because they are rounded to 2–3 significant figures and every entry is within
+   0.50 digit.
+5. **S&L `adc` pressure.** The routine computes `PS = 1715 ρ T`, a different constant from the 1716.3 in its speed of sound. The
+   code had used 1716.3 and now uses 1715. Pressure is output-only (CLI trim JSON, `atmosphere.p`): no force, moment or derivative
+   reads it, so no result changes. `Atmosphere.SlAdcMatchesRoutine` reproduces the S&L formulas by construction (offline
+   evaluation of the same expressions). It pins the transcription and is not an independent atmosphere check.
