@@ -370,8 +370,11 @@ def _overlay_builder(tag: str, key: str, scale: float):
 
 
 def c2_windup(out: Path) -> go.Figure:
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
-                        subplot_titles=("Altitude deviation from trim", "Pitch command θ_cmd", "Throttle command"))
+    # The windup difference lives in the first ~100 s (overshoot and the slow return); a 300 s axis hides it, so the
+    # figure shows 0-120 s and adds the altitude error, where overshoot and settling are read directly.
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+                        subplot_titles=("Altitude deviation from trim", "Altitude error h − h_cmd",
+                                        "Pitch command θ_cmd", "Throttle command"))
     runs = (("c2", "anti-windup on (back-calculation)", 0, "solid"), ("c2n", "anti-windup off", 1, "dash"))
     ref_done = False
     for tag, label, slot, dash in runs:
@@ -381,13 +384,17 @@ def c2_windup(out: Path) -> go.Figure:
             fig.add_trace(_ref("command", tr["t_s"], [(c - h0) / FT for c in tr["h_cmd_m"]]), row=1, col=1)
             ref_done = True
         fig.add_trace(_ln(label, tr["t_s"], [(h - h0) / FT for h in tr["h_m"]], slot, dash), row=1, col=1)
-        fig.add_trace(_ln(label, tr["t_s"], [t / DEG for t in tr["theta_cmd_rad"]], slot, dash, showlegend=False), row=2, col=1)
-        fig.add_trace(_ln(label, tr["t_s"], tr["throttle"], slot, dash, showlegend=False), row=3, col=1)
-    fig.update_xaxes(title_text="time t [s]", row=3, col=1)
+        err = [(h - c) / FT for h, c in zip(tr["h_m"], tr["h_cmd_m"])]
+        fig.add_trace(_ln(label, tr["t_s"], err, slot, dash, showlegend=False), row=2, col=1)
+        fig.add_trace(_ln(label, tr["t_s"], [t / DEG for t in tr["theta_cmd_rad"]], slot, dash, showlegend=False), row=3, col=1)
+        fig.add_trace(_ln(label, tr["t_s"], tr["throttle"], slot, dash, showlegend=False), row=4, col=1)
+    fig.update_xaxes(range=[0, 120])
+    fig.update_xaxes(title_text="time t [s]", row=4, col=1)
     fig.update_yaxes(title_text="Δh [ft]", row=1, col=1)
-    fig.update_yaxes(title_text="θ_cmd [deg]", row=2, col=1)
-    fig.update_yaxes(title_text="throttle [-]", row=3, col=1)
-    return _style(fig, 760)
+    fig.update_yaxes(title_text="error [ft]", range=[-60, 60], row=2, col=1)
+    fig.update_yaxes(title_text="θ_cmd [deg]", row=3, col=1)
+    fig.update_yaxes(title_text="throttle [-]", row=4, col=1)
+    return _style(fig, 900)
 
 
 def c4_disturbance(out: Path) -> go.Figure:
