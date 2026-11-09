@@ -71,3 +71,28 @@ TEST(Trim, TrimRejectsOutOfTableEngine) {
     EXPECT_NE(tr.message.find("outside"), std::string::npos);
   }
 }
+
+TEST(Trim, ActuatorEnabledTrimIsEquilibriumForActuatorAndPowerStates) {
+  // The control scenario enables actuators; trim solves on ideal surfaces, then sets the actuator states
+  // to the trimmed positions (zero actuator derivative).
+  auto s = sim::load_aircraft_scenario(root / "scenarios/control/f16_ap_trim.toml");
+  ASSERT_TRUE(s.model.actuators);
+  const auto tr = trim_level(s.model, s.trim);
+  ASSERT_TRUE(tr.ok) << tr.message;
+  EXPECT_DOUBLE_EQ(tr.x(ac::kDe), tr.de);
+  EXPECT_DOUBLE_EQ(tr.x(ac::kDa), 0);
+  EXPECT_DOUBLE_EQ(tr.x(ac::kDr), 0);
+  const Vec<17> xd = s.model.deriv(0, tr.x, tr.u);
+  // Actuator and power derivatives vanish to roundoff; 1e-12 (1/s-scale units, state magnitudes <= 1 rad or
+  // ~11 %) is ~4 orders above eps and ~2 below the 1e-10 trim residual that sets the rigid-body entries.
+  for (int i : {ac::kPower, ac::kDe, ac::kDa, ac::kDr}) {
+    EXPECT_NEAR(xd(i), 0, 1e-12) << "state " << i;
+  }
+  // Same trim as the ideal-surface model: the actuator-enabled model changes nothing but the extra states.
+  auto ideal = s;
+  ideal.model.actuators = false;
+  const auto tr_ideal = trim_level(ideal.model, ideal.trim);
+  EXPECT_EQ(tr.alpha, tr_ideal.alpha);
+  EXPECT_EQ(tr.throttle, tr_ideal.throttle);
+  EXPECT_EQ(tr.de, tr_ideal.de);
+}

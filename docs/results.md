@@ -354,4 +354,84 @@ aerodynamic feedback has grown the drift beyond the kinematic terms, which is wh
 | 20 | Δθ [deg] | 0.02748 | 0.05573 |
 | 20 | ΔV [ft/s] | -0.1541 | -0.1989 |
 
-Autopilot results follow in M7.
+## Control (M7)
+
+Operating point: S&L model, 502 ft/s, 10,000 ft, x_cg = 0.35, actuators (lag, rate and position limits) and engine lag on, 50 Hz
+sampled autopilot with outputs held between samples, RK4 at dt = 0.01 s. Structure and gains are exactly those of `docs/design.md`
+(M7a): altitude PI → θ_cmd (plus the airspeed→pitch cross-feed, combined ±15° limit) → pitch P → pitch-rate PI → elevator;
+airspeed PI → throttle. The gains are the committed `scenarios/control/autopilot_gains.toml` (reproduced byte-for-byte by
+`design.py`); nothing was tuned on the nonlinear model. All five runs are free of table-domain violations: **True** (True = the
+lookup monitor stayed clean in every run).
+
+### Targets against measurements (PRD §8.7)
+
+Measured values are computed by the C++ runner (`control/metrics.cpp`, written to each run's `metadata.json`); the linear column is
+`design.py`'s delayed linear prediction (step at t = 0, no saturation).
+
+| Case | Metric | Target | Linear prediction | Measured | Result |
+|---|---|---|---|---|---|
+| C1 +100 ft | overshoot | ≤ 10 % | 4.30 % | 4.47 % | pass |
+| C1 | 2 % settling | ≤ 25 s | 16.3 s | 16.45 s | pass |
+| C1 | steady-state \|e\| (last 10 s of 305 s) | ≤ 1 ft | 0.32 ft (at 300 s) | 0.33 ft | pass |
+| C1 | airspeed deviation | ≤ 5 ft/s | 2.96 ft/s | 3.19 ft/s | pass |
+| C2 +1,000 ft, anti-windup | overshoot | ≤ 15 % | n/a (saturates) | 3.08 % | pass |
+| C2 | 2 % settling | ≤ 120 s | n/a | 21.2 s | pass |
+| C2 | final \|e\| (last 10 s of 305 s) | ≤ 10 ft | n/a | 3.46 ft | pass |
+| C2 without anti-windup | overshoot / 2 % settling | anti-windup no worse on both | n/a | 4.61 % / 90.5 s | pass |
+| C3 +50 ft/s | overshoot | ≤ 10 % | 4.28 % | 4.22 % | pass |
+| C3 | 2 % settling | reported (should settle) | 11.0 s | 11.85 s | pass |
+| C3 | altitude deviation | ≤ 20 ft | 4.18 ft | 4.88 ft | pass |
+| C4 20 kt headwind change | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 2.36 ft / 136.8 s | pass |
+| C4 10 ft/s 1-cos gust | peak altitude deviation / time to stay within 2 % of it | reported; returns within band | n/a | 17.10 ft / 71.6 s | pass |
+| C5 | worst gain margin / phase margin over four loops | ≥ 6 dB / ≥ 45° | 18.14 dB / 52.80° | (design.py) | pass |
+
+C5 margins are broken one loop at a time with every other loop closed (`design.py`, `margins.json`; null = no finite lower-gain
+boundary found):
+
+| Loop | Crossover [rad/s] | Gain-increase margin [dB] | Gain-reduction margin [dB] | Phase margin [deg] | Result |
+|---|---|---|---|---|---|
+| pitch rate → elevator (PI) | 8.224 | 20.88 | 28.06 | 52.80 | pass |
+| pitch → pitch-rate command (P) | 1.907 | 18.14 | 50.08 | 74.49 | pass |
+| altitude → pitch command (PI) | 0.252 | 20.36 | none found | 65.02 | pass |
+| airspeed → throttle (PI) | 0.400 | 47.31 | none found | 66.72 | pass |
+
+Figures in `out/index.html`: C1–C3 nonlinear against the linear prediction, C2 anti-windup against no anti-windup, C4 disturbance
+rejection, and actuator usage.
+
+### Actuator usage (per integration step, C++)
+
+Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limited to [0, 1].
+
+| Run | Peak elevator position [deg] | Peak elevator rate [deg/s] | Throttle range |
+|---|---|---|---|
+| C1 | 5.70 | 60.00 | 0.165 … 0.240 |
+| C2 anti-windup | 14.85 | 60.00 | 0.152 … 0.534 |
+| C2 no anti-windup | 14.88 | 60.00 | 0.152 … 0.534 |
+| C3 | 0.74 | 0.17 | 0.152 … 1.000 |
+| C4 | 0.95 | 29.46 | 0.000 … 0.176 |
+
+### Reading the results (review items)
+
+- **C1 steady state is horizon-limited, not a nonlinear effect.** The altitude PI zero (0.005 rad/s) leaves a tail of roughly 200 s. 55 s
+  after the command the nonlinear |e| is 1.10 ft and the design's linear model predicts 1.09 ft, so a
+  60 s record would miss the 1 ft target in both. The scenario therefore runs 305 s (the 300 s horizon of the linear
+  prediction; the linear model gives 0.32 ft there) and the target is met on the last 10 s. This horizon was chosen from
+  the linear prediction; no gain was changed.
+- **The elevator rate limit is reached.** C1's peak elevator rate is 60.0 deg/s against the 60 deg/s limit: the first controller
+  sample after the command asks for a larger elevator step than the actuator can follow. The design's linear model has no rate limit; the
+  nonlinear C1 still matches it to a fraction of a percent of overshoot (table), so the limit is brief.
+- **C2 anti-windup works because the tracking times are matched to the integral times.** With anti-windup the overshoot is
+  3.08 % against 4.61 % without, it settles in 21.2 s against 90.5 s, and ends
+  within 3.46 ft of the command (θ_cmd saturates at 15.0°; the throttle peaks at 0.53 and does not saturate).
+  Back-calculation tracking times follow one rule, t_t = T_i = k_p/k_i for every PI loop (`design.py`, docs/design.md "M7b: anti-windup tracking times");
+  the first design used t_t = 1/ω_c, far below T_i, which let a saturated P term drag the altitude integrator negative and left the run short of its command.
+- **C3 saturates the throttle at the step.** k_p·ΔV for +50 ft/s exceeds the whole throttle range, so the first samples are limited; overshoot is
+  4.22 % (linear 4.28 %) and the airspeed settles within 2 % in 11.85 s (linear 11.0 s).
+- **C4 recovery definition.** "Returns within a 2 % band" is measured against 2 % of the peak deviation in the window that runs from a disturbance to the
+  next one (or the end of the run). The gust is applied 500 s after the start so that the slow headwind transient (altitude recovery
+  137 s, airspeed 20 s) has died out. The headwind change is a time-aligned constant-wind step: the aircraft
+  flies north and a 20 kt headwind (10.289 m/s) is added at t = 5 s, a step in air-relative speed because inertial velocity is continuous.
+  The gust is the vertical 1-cos profile of the wind model with amplitude 10 ft/s, 5 s long.
+- **B1 closed loop.** `validation_tests` `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` integrates the budget-augmented state through 60 s of C1
+  and asserts `|ΔE − W_nc| / max|ΔE| < 1e-6` at dt = 0.01 s (the measured ratio is printed by the test). It holds step by step because the controller sits outside the derivative:
+  inputs are constants within a step, so each step is the same smooth ODE as the open-loop budget run, and E − W_nc is conserved by it for any input history.

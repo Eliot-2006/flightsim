@@ -142,8 +142,14 @@ def synthesize(plant):
         "airspeed_to_pitch": slope,
         "reference_airspeed_mps": scenario["trim"]["V_fps"] * .3048,
     }}
-    for name, wc, (low, high) in zip(LOOPS, CROSSOVERS, limits):
-        gains[name] = dict(kp=0.0, ki=0.0, kd=0.0, tf=1 / RATE_HZ, tt=1 / wc,
+    for name, wc, zero, (low, high) in zip(LOOPS, CROSSOVERS, ZEROS, limits):
+        # Back-calculation tracking time. Rule (Astrom-Hagglund; the PI limit of Astrom-Murray's sqrt(Ti*Td), here
+        # Td = 0): tt = Ti = kp/ki = 1/zero. With a much shorter tt the saturated equilibrium is I = u_sat - kp*e,
+        # so a P term alone beyond the limit drags the integrator far negative and the slow ki cannot undo it
+        # (C2 +1000 ft: 79 ft short after 305 s). With tt = Ti it is I -> u_sat. The P-only pitch loop has no
+        # integrator (zero = 0): tt is not a PI time there and keeps the crossover time 1/wc. tt does not enter any
+        # linear analysis, so margins and linear predictions are unchanged.
+        gains[name] = dict(kp=0.0, ki=0.0, kd=0.0, tf=1 / RATE_HZ, tt=1 / zero if zero else 1 / wc,
                            umin=float(low), umax=float(high))
     for i, (name, wc, zero) in enumerate(zip(LOOPS, CROSSOVERS, ZEROS)):
         gains[name].update(kp=1.0, ki=zero)

@@ -67,12 +67,9 @@ double dimension(const toml::table& t, const char* si, const char* imperial) {
   }
   return t.contains(si) ? required<double>(t, si) : required<double>(t, imperial) * units::ft;
 }
-}  // namespace
-F16Model load_aircraft(const toml::table& t, const std::filesystem::path& base) {
-  keys(t, {"aircraft", "trim", "initial", "inputs", "wind", "sim"});
-  const auto& a = section(t, "aircraft");
-  keys(a, {"data", "xcg", "atmosphere", "gravity", "rotor", "actuators"});
-  std::filesystem::path path = required<std::string>(a, "data");
+// A relative path is looked up next to the scenario, then in each parent directory (repo-root-relative
+// paths).
+std::filesystem::path resolve_path(const std::filesystem::path& base, std::filesystem::path path) {
   if (path.is_relative()) {
     auto candidate = base / path;
     if (!std::filesystem::exists(candidate)) {
@@ -88,6 +85,14 @@ F16Model load_aircraft(const toml::table& t, const std::filesystem::path& base) 
     }
     path = candidate;
   }
+  return path;
+}
+}  // namespace
+F16Model load_aircraft(const toml::table& t, const std::filesystem::path& base) {
+  keys(t, {"aircraft", "trim", "initial", "inputs", "wind", "sim", "autopilot", "commands"});
+  const auto& a = section(t, "aircraft");
+  keys(a, {"data", "xcg", "atmosphere", "gravity", "rotor", "actuators"});
+  const std::filesystem::path path = resolve_path(base, required<std::string>(a, "data"));
   F16Model m{load_f16_data(path)};
   m.xcg = required<double>(a, "xcg");
   const auto atm = required<std::string>(a, "atmosphere");
@@ -123,7 +128,7 @@ F16Model load_aircraft(const toml::table& t, const std::filesystem::path& base) 
   m.actuators = required<bool>(a, "actuators");
   if (t.contains("wind")) {
     const auto& w = section(t, "wind");
-    keys(w, {"constant_mps", "gust"});
+    keys(w, {"constant_mps", "gust", "steps"});
     if (w.contains("constant_mps")) {
       m.wind.constant_N = vec3(w, "constant_mps");
     }
@@ -137,7 +142,7 @@ F16Model load_aircraft(const toml::table& t, const std::filesystem::path& base) 
   return m;
 }
 TrimSpec load_trim_spec(const toml::table& t, double cg) {
-  keys(t, {"aircraft", "trim", "initial", "inputs", "wind", "sim"});
+  keys(t, {"aircraft", "trim", "initial", "inputs", "wind", "sim", "autopilot", "commands"});
   const auto& r = section(t, "trim");
   keys(r, {"V_mps", "V_fps", "h_m", "h_ft", "gamma_deg"});
   TrimSpec s{dimension(r, "V_mps", "V_fps"), dimension(r, "h_m", "h_ft"),
@@ -151,8 +156,11 @@ AircraftScenario load_aircraft_scenario(const std::filesystem::path& path) {
   const auto t = toml::parse_file(path.string());
   auto m = load_aircraft(t, std::filesystem::absolute(path).parent_path());
   auto s = load_trim_spec(t, m.xcg);
-  AircraftScenario sc{std::move(m), s, {}, true, Vec<13>::Zero(), {}, {}, path.string()};
+  AircraftScenario sc{std::move(m), s, {}, true, Vec<13>::Zero(), {}, {}, path.string(), {}, {}, {}};
   if (!t.contains("sim")) {
+    if (t.contains("autopilot") || t.contains("commands")) {
+      throw std::runtime_error("autopilot/commands: require a [sim] table");
+    }
     return sc;
   }
   const auto& sm = section(t, "sim");
@@ -225,6 +233,88 @@ AircraftScenario load_aircraft_scenario(const std::filesystem::path& path) {
       sc.inputs.push_back(ev);
     }
   }
+  if (const auto* w = t["wind"].as_table(); w && w->contains("steps")) {
+    const auto* arr = (*w)["steps"].as_array();
+    if (!arr) {
+      throw std::runtime_error("wind.steps: expected an array of tables");
+    }
+    for (const auto& node : *arr) {
+      const auto* e = node.as_table();
+      if (!e) {
+        throw std::runtime_error("wind.steps: expected an array of tables");
+      }
+      keys(*e, {"t_s", "delta_mps"});
+      const WindStep step{required<double>(*e, "t_s"), vec3(*e, "delta_mps")};
+      if (step.t_s < 0 || step.t_s > rc.t_final) {
+        throw std::runtime_error("wind.steps.t_s: must lie in [0, sim.t_final_s]");
+      }
+      require_aligned(step.t_s, rc.dt, "wind.steps.t_s");
+      sc.wind_steps.push_back(step);
+    }
+  }
+  if (t.contains("commands") && !t.contains("autopilot")) {
+    throw std::runtime_error("commands: require an [autopilot] table");
+  }
+  if (t.contains("autopilot")) {
+    if (!sc.inputs.empty()) {
+      throw std::runtime_error("inputs: open-loop events cannot be combined with an [autopilot]");
+    }
+    const auto& ap = section(t, "autopilot");
+    keys(ap, {"rate_hz", "gains", "antiwindup"});
+    AutopilotConfig cfg;
+    cfg.rate_hz = required<double>(ap, "rate_hz");
+    cfg.antiwindup = required<bool>(ap, "antiwindup");
+    const double ratio = 1 / (cfg.rate_hz * rc.dt);
+    if (cfg.rate_hz <= 0 || ratio < 1 - 1e-9 || std::abs(ratio - std::round(ratio)) > 1e-9) {
+      throw std::runtime_error("autopilot.rate_hz: sim.dt_s must divide 1/rate_hz (got dt_s=" +
+                               std::to_string(rc.dt) + ", rate_hz=" + std::to_string(cfg.rate_hz) + ")");
+    }
+    cfg.steps_per_sample = std::lround(ratio);
+    cfg.gains_path =
+        resolve_path(std::filesystem::absolute(path).parent_path(), required<std::string>(ap, "gains"))
+            .string();
+    cfg.gains = load_autopilot_gains(cfg.gains_path);
+    if (std::abs(cfg.gains.rate_hz - cfg.rate_hz) > 1e-9 * cfg.rate_hz) {
+      throw std::runtime_error("autopilot.rate_hz: the gains were designed for " +
+                               std::to_string(cfg.gains.rate_hz) + " Hz; redesign them for another rate");
+    }
+    sc.autopilot = cfg;
+    if (const auto* arr = t["commands"].as_array()) {
+      for (const auto& node : *arr) {
+        const auto* e = node.as_table();
+        if (!e) {
+          throw std::runtime_error("commands: expected an array of tables");
+        }
+        keys(*e, {"kind", "t_s", "value_ft", "value_m", "value_fps", "value_mps"});
+        const auto kind = required<std::string>(*e, "kind");
+        Command c{Command::Altitude, required<double>(*e, "t_s"), 0};
+        if (kind == "altitude") {
+          c.value = dimension(*e, "value_m", "value_ft");
+        } else if (kind == "airspeed") {
+          c.kind = Command::Airspeed;
+          c.value = dimension(*e, "value_mps", "value_fps");
+        } else {
+          throw std::runtime_error("commands.kind: expected altitude or airspeed");
+        }
+        if (c.t_s < 0 || c.t_s >= rc.t_final || c.value <= 0) {
+          throw std::runtime_error("commands: need 0 <= t_s < sim.t_final_s and a positive value");
+        }
+        require_aligned(c.t_s, rc.dt, "commands.t_s");
+        sc.commands.push_back(c);
+      }
+      std::stable_sort(sc.commands.begin(), sc.commands.end(),
+                       [](const Command& a, const Command& b) { return a.t_s < b.t_s; });
+    }
+  }
   return sc;
+}
+Vec3 constant_wind_at(const AircraftScenario& s, double t) {
+  Vec3 w = s.model.wind.constant_N;
+  for (const auto& step : s.wind_steps) {
+    if (t >= step.t_s - 1e-9) {  // event times are multiples of dt_s; slack only absorbs k*dt roundoff
+      w += step.delta_N;
+    }
+  }
+  return w;
 }
 }  // namespace flightsim::sim

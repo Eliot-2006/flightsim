@@ -11,7 +11,7 @@ from typing import Callable
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .metrics import INTEGRATORS, STUDY, hn, read_csv, trajectory
+from .metrics import CONTROL_RUNS, ELEVATOR_LIMITS, FT, INTEGRATORS, STUDY, control_meta, hn, read_csv, trajectory, trajectory_control
 
 # Categorical slots (dataviz palette, slots 2-4 darkened to reach 3:1 on the light surface; report.py swaps in the dark steps). Colour follows
 # the integrator, never its rank in a panel.
@@ -323,4 +323,150 @@ FIGURES.extend([
            "difference is plotted (log axis; exact zeros are drawn at the floor). The unexplained remainder applies all "
            "explained corrections at once.",
            "python/tests/test_jsbsim_compare.py (budget structure) and `python -m jsbsim_compare.compare --check`", j3_budget),
+])
+
+
+# ---------------------------------------------------------------- control (M7): C1-C4, windup, actuator usage
+# Slots: 0 nonlinear, 1 linear prediction / second run, 2 third run, 3 fourth run; command reference is grey.
+DEG = 0.017453292519943295
+
+
+def _ln(name, x, y, slot, dash="solid", **kw):
+    return go.Scatter(x=x, y=y, name=name, mode="lines", meta=slot,
+                      line=dict(color=LIGHT[slot], dash=dash, width=2), **kw)
+
+
+def _ref(name, x, y):
+    return go.Scatter(x=x, y=y, name=name, mode="lines", meta="ref", line=dict(color=START_MARKER, dash="dot", width=1.5))
+
+
+def _lin_steps(out: Path) -> dict:
+    return json.loads((out / "control_design" / "linear_steps.json").read_text())
+
+
+def _overlay_builder(tag: str, key: str, scale: float):
+    def build(out: Path) -> go.Figure:
+        tr = trajectory_control(out, tag)
+        lin = _lin_steps(out)[key]
+        t_cmd = control_meta(out, tag)["control"]["steps"][0]["t_cmd_s"]
+        t0, h0, v0 = tr["t_s"], tr["h_m"][0], tr["V_mps"][0]
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                            subplot_titles=("Altitude deviation from trim", "Airspeed deviation from trim"))
+        t_lin = [t_cmd + t for t in lin["time_s"]]
+        for row, (nl, ln, cmd_key, ref0) in enumerate(((tr["h_m"], lin["altitude_m"], "h_cmd_m", h0),
+                                                       (tr["V_mps"], lin["airspeed_mps"], "V_cmd_mps", v0)), start=1):
+            fig.add_trace(_ref("command", t0, [(c - ref0) / FT for c in tr[cmd_key]]).update(showlegend=row == 1), row=row, col=1)
+            fig.add_trace(_ln("nonlinear (C++ runner)", t0, [(y - ref0) / FT for y in nl], 0, showlegend=row == 1), row=row, col=1)
+            fig.add_trace(_ln("linear prediction" + (f" × {scale:g}" if scale != 1 else ""), t_lin,
+                              [scale * y / FT for y in ln], 1, "dash", showlegend=row == 1), row=row, col=1)
+        fig.update_xaxes(title_text="time t [s]", range=[0, min(tr["t_s"][-1], t_cmd + 100)], row=2, col=1)
+        fig.update_yaxes(title_text="Δh [ft]", row=1, col=1)
+        fig.update_yaxes(title_text="ΔV [ft/s]", row=2, col=1)
+        for i in fig.layout.annotations:
+            i.font.size = 13
+        return _style(fig, 620)
+
+    return build
+
+
+def c2_windup(out: Path) -> go.Figure:
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
+                        subplot_titles=("Altitude deviation from trim", "Pitch command θ_cmd", "Throttle command"))
+    runs = (("c2", "anti-windup on (back-calculation)", 0, "solid"), ("c2n", "anti-windup off", 1, "dash"))
+    ref_done = False
+    for tag, label, slot, dash in runs:
+        tr = trajectory_control(out, tag)
+        h0 = tr["h_m"][0]
+        if not ref_done:
+            fig.add_trace(_ref("command", tr["t_s"], [(c - h0) / FT for c in tr["h_cmd_m"]]), row=1, col=1)
+            ref_done = True
+        fig.add_trace(_ln(label, tr["t_s"], [(h - h0) / FT for h in tr["h_m"]], slot, dash), row=1, col=1)
+        fig.add_trace(_ln(label, tr["t_s"], [t / DEG for t in tr["theta_cmd_rad"]], slot, dash, showlegend=False), row=2, col=1)
+        fig.add_trace(_ln(label, tr["t_s"], tr["throttle"], slot, dash, showlegend=False), row=3, col=1)
+    fig.update_xaxes(title_text="time t [s]", row=3, col=1)
+    fig.update_yaxes(title_text="Δh [ft]", row=1, col=1)
+    fig.update_yaxes(title_text="θ_cmd [deg]", row=2, col=1)
+    fig.update_yaxes(title_text="throttle [-]", row=3, col=1)
+    return _style(fig, 760)
+
+
+def c4_disturbance(out: Path) -> go.Figure:
+    tr = trajectory_control(out, "c4")
+    dist = {d["kind"]: d for d in control_meta(out, "c4")["control"]["disturbances"]}
+    fig = make_subplots(rows=2, cols=2, shared_xaxes=False, vertical_spacing=0.12, horizontal_spacing=0.08,
+                        subplot_titles=("20 kt headwind change: altitude", "1-cos gust: altitude",
+                                        "20 kt headwind change: airspeed", "1-cos gust: airspeed"))
+    for col, kind, span in ((1, "wind_step", 450), (2, "gust", 200)):
+        t0 = dist[kind]["t_s"]
+        idx = [i for i, t in enumerate(tr["t_s"]) if t0 - 5 <= t <= t0 + span]
+        rel = [tr["t_s"][i] - t0 for i in idx]
+        for row, (sig, cmd, label) in enumerate((("h_m", "h_cmd_m", "altitude"), ("V_mps", "V_cmd_mps", "airspeed")), start=1):
+            dev = [(tr[sig][i] - tr[cmd][i]) / FT for i in idx]
+            peak = max(abs(d) for d in dev)
+            fig.add_trace(_ln(label, rel, dev, 0, showlegend=False), row=row, col=col)
+            for sgn in (1, -1):  # the 2 % band the recovery time is measured against
+                fig.add_trace(_ref("±2 % of peak", rel, [sgn * 0.02 * peak] * len(rel)).update(showlegend=(sgn == 1 and row == 1 and col == 1)), row=row, col=col)
+            fig.update_xaxes(title_text="time since disturbance [s]" if row == 2 else None, row=row, col=col)
+    fig.update_yaxes(title_text="Δh from command [ft]", row=1, col=1)
+    fig.update_yaxes(title_text="ΔV from command [ft/s]", row=2, col=1)
+    return _style(fig, 640)
+
+
+def actuator_usage(out: Path) -> go.Figure:
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
+                        subplot_titles=("Elevator position", "Elevator rate", "Throttle command"))
+    cases = (("c1", "C1 +100 ft", 0), ("c2", "C2 +1,000 ft", 1), ("c3", "C3 +50 ft/s", 2))
+    for tag, label, slot in cases:
+        tr = trajectory_control(out, tag)
+        t_cmd = control_meta(out, tag)["control"]["steps"][0]["t_cmd_s"]
+        idx = [i for i, t in enumerate(tr["t_s"]) if t_cmd - 2 <= t <= t_cmd + 60]
+        rel = [tr["t_s"][i] - t_cmd for i in idx]
+        de = [tr["de_state_rad"][i] / DEG for i in idx]
+        # rate = first difference of the recorded actuator state (post-processing; the C++ per-step peak is in the table)
+        rate = [0.0] + [(de[i] - de[i - 1]) / (rel[i] - rel[i - 1]) for i in range(1, len(de))]
+        fig.add_trace(_ln(label, rel, de, slot), row=1, col=1)
+        fig.add_trace(_ln(label, rel, rate, slot, showlegend=False), row=2, col=1)
+        fig.add_trace(_ln(label, rel, [tr["throttle"][i] for i in idx], slot, showlegend=False), row=3, col=1)
+    span = [-2, 60]
+    for row, level in ((1, ELEVATOR_LIMITS["position_deg"]), (2, ELEVATOR_LIMITS["rate_dps"])):
+        for sgn in (1, -1):
+            fig.add_trace(_ref("actuator limit", span, [sgn * level] * 2).update(showlegend=(row == 1 and sgn == 1)), row=row, col=1)
+    for level in (0, 1):
+        fig.add_trace(_ref("throttle limit", span, [level] * 2).update(showlegend=False), row=3, col=1)
+    fig.update_xaxes(title_text="time since command [s]", row=3, col=1)
+    fig.update_yaxes(title_text="δe [deg]", row=1, col=1)
+    fig.update_yaxes(title_text="dδe/dt [deg/s]", row=2, col=1)
+    fig.update_yaxes(title_text="throttle [-]", row=3, col=1)
+    return _style(fig, 760)
+
+
+FIGURES.extend([
+    Figure("c1-overlay", "C1: +100 ft altitude step, nonlinear vs linear prediction",
+           "Closed-loop response of the C++ runner (50 Hz autopilot, actuator and engine lag) against the design.py linear "
+           "prediction (linear_steps.json perturbations from trim, shifted to the command time). The two agree to a fraction of a percent of the step.",
+           "validation_tests: F16Autopilot.C1AltitudeStep100ft (overshoot ≤ 10 %, 2 % settling ≤ 25 s, steady-state ≤ 1 ft, airspeed deviation ≤ 5 ft/s)",
+           _overlay_builder("c1", "C1", 1.0), headline=True),
+    Figure("c2-overlay", "C2: +1,000 ft altitude step, nonlinear vs scaled linear prediction",
+           "The saturating +1,000 ft step against the linear C1 prediction multiplied by 10 (the linear model is linear but has no saturation). "
+           "The gap is the effect of the ±15° pitch-command limit, throttle limit and back-calculation.",
+           "validation_tests: F16Autopilot.C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup",
+           _overlay_builder("c2", "C1", 10.0)),
+    Figure("c3-overlay", "C3: +50 ft/s airspeed step, nonlinear vs linear prediction",
+           "The +50 ft/s step needs more than the whole throttle range at the first sample (kp·ΔV exceeds 1), so the linear prediction, which has "
+           "no throttle limit, does not apply; the nonlinear run saturates the throttle and recovers slowly.",
+           "validation_tests: F16Autopilot.C3AirspeedStep50fps (overshoot ≤ 10 %, altitude deviation ≤ 20 ft)",
+           _overlay_builder("c3", "C3", 1.0)),
+    Figure("c2-windup", "C2: anti-windup against no anti-windup",
+           "The +1,000 ft step with back-calculation anti-windup (solid) and without (dashed): altitude, pitch command and throttle.",
+           "validation_tests: F16Autopilot.C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup (overshoot with ≤ 15 % and strictly less than without)",
+           c2_windup, headline=True),
+    Figure("c4-disturbance", "C4: headwind change and vertical gust rejection",
+           "Deviation from the altitude and airspeed commands after a 20 kt headwind step (left) and a 10 ft/s 1-cos updraft (right). "
+           "Dotted lines are the ±2 % of peak band the recovery time is measured against.",
+           "validation_tests: F16Autopilot.C4GustAndHeadwindChangeRecoverWithinTwoPercentBand",
+           c4_disturbance),
+    Figure("control-actuators", "Control: actuator usage",
+           "Elevator position and rate and the throttle command for C1–C3, against the elevator ±25° / 60°/s and throttle [0, 1] limits.",
+           "unit_tests: AircraftRunnerAutopilot (rates/limits are applied by the model); the per-step peaks are in docs/results.md",
+           actuator_usage),
 ])

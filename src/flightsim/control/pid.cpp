@@ -16,8 +16,12 @@ Pid::Pid(PidGains g) : g_(g) {
   }
 }
 double Pid::update(double setpoint, double measurement, double dt) {
-  if (!std::isfinite(setpoint) || !std::isfinite(measurement) || !std::isfinite(dt) || dt <= 0) {
-    throw std::invalid_argument("PID requires finite inputs and dt>0");
+  return update(setpoint, measurement, dt, g_.umin, g_.umax);
+}
+double Pid::update(double setpoint, double measurement, double dt, double umin, double umax) {
+  if (!std::isfinite(setpoint) || !std::isfinite(measurement) || !std::isfinite(dt) || dt <= 0 ||
+      !std::isfinite(umin) || !std::isfinite(umax) || umin > umax) {
+    throw std::invalid_argument("PID requires finite inputs, dt>0 and umin<=umax");
   }
   const double error = setpoint - measurement;
   const double proportional = g_.kp * error;
@@ -32,7 +36,7 @@ double Pid::update(double setpoint, double measurement, double dt) {
   measured_ = true;
   const double raw = proportional + integral_ - g_.kd * derivative_;
   // Return the requested value directly: subtracting/re-adding P can lose low output bits.
-  const double output = resetting_ ? initial_output_ : std::clamp(raw, g_.umin, g_.umax);
+  const double output = resetting_ ? initial_output_ : std::clamp(raw, umin, umax);
   resetting_ = false;
   if (antiwindup) {
     integral_ += dt * (output - raw) / g_.tt;
