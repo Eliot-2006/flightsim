@@ -47,7 +47,36 @@ At h = {{t4.h}} s over {{t4.t_final:.0f}} s the phase radius on the ω = 1 rad/s
 
 ## Performance
 
-Release build, single thread, {{bench.cpus}} logical CPUs (Google Benchmark reports no usable clock speed on this machine). PRD §11 targets are reported, not gated.
+PRD §11 targets are expectations, reported and not gated. {{bench.f16.misses}} of the six targets below are missed.
+
+### Methodology
+
+| | |
+|---|---|
+| Hardware | {{host.cpu}}, {{host.logical_cpus}} logical CPUs. The model string is read with `sysctl -n machdep.cpu.brand_string` (macOS) or `/proc/cpuinfo` (Linux); Google Benchmark's own clock-speed figure is not usable on Apple silicon. |
+| OS | {{host.os}} |
+| Compiler | {{host.compiler}} |
+| Build | {{host.build_type}}, flags `{{host.flags}}` plus `-Wall -Wextra -Wpedantic -Wconversion -Werror`; `-ffp-contract=off` is the project-wide determinism setting and is part of what is measured. Google Benchmark {{bench.library}}, library built {{bench.library_build}}. |
+| Execution | One thread. No CPU pinning, frequency control or isolation: the machine was in ordinary use. |
+| Settings | `--benchmark_min_time={{host.bench_min_time}} --benchmark_repetitions={{host.bench_repetitions}} --benchmark_report_aggregates_only=true` |
+| Statistic | Median CPU time over the {{host.bench_repetitions}} repetitions. The largest coefficient of variation of any benchmark is {{bench.cv_max_pct:.1f}} %. |
+
+Workloads (`bench/bench_integrators.cpp`, `bench/bench_f16.cpp`):
+
+- **Rigid-body step**: one step of a tumbling body under gravity and quadratic drag, h = 1 ms.
+- **F-16 derivative and RK4 step**: the closed-loop operating point (502 ft/s, 10,000 ft, x_cg = 0.35, actuators and engine lag on), evaluated at the trimmed state with the trim controls. Every RK4 iteration restarts from the trimmed state: stepping on would drift off trim (the open-loop aircraft is unstable) and leave the model's domain. The RK4 step includes the quaternion renormalization the runner applies.
+- **60 s closed-loop run**: `run_aircraft` on scenario C1 (`scenarios/f16_ap_c1_alt100.toml`) with the final time cut to 60 s, dt = 0.01 s, autopilot at 50 Hz. Nothing is written: samples are kept only at the first and last step. The run includes its own trim solve (the Trim row below), so the real-time factor is slightly conservative.
+- **Trim and linearization**: 502 ft/s, sea level, x_cg = 0.35, ideal surfaces (the linearizer requires them) with the model of `scenarios/f16_trim_502_xcg035.toml`.
+
+### F-16 against the PRD §11 targets
+
+| Benchmark | PRD §11 target | Measured (median) | Status |
+|---|---|---|---|
+{{bench.f16.table}}
+
+The 60 s closed-loop run is {{bench.f16.realtime_factor:.0f}}× faster than real time.
+
+### Integrator cost
 
 | Integrator | Rigid-body step (gravity + quadratic drag) [ns] | R3 10 s run, h = {{bench.r3run.h}} s [µs] |
 |---|---|---|
@@ -56,6 +85,28 @@ Release build, single thread, {{bench.cpus}} logical CPUs (Google Benchmark repo
 | RKMK4 | {{bench.step.rkmk4.ns:.0f}} | {{bench.r3run.rkmk4.us:.0f}} |
 
 ## Aircraft
+
+### Published check case and consistency laws (A1, B1, B2, S1, W1, aircraft convergence)
+
+The values below are printed by the tests named in the last column; `flightsim_analysis.run` re-runs exactly those tests and `metrics.json` reads their output. The assertions (bounds in the "Bound" column) are enforced by `ctest`.
+
+| ID | Check | Measured | Bound | Test |
+|---|---|---|---|---|
+| A1 | S&L state-derivative check case: largest relative error over all 16 printed derivative components | {{checks.a1.max_rel:.2e}} | 1e-3 | `F16Model.A1CheckCase` |
+| A1 | the same, excluding ṗ and ṙ | {{checks.a1.max_rel_excluding_rotational:.2e}} | investigate above 1e-4 | `F16Model.A1CheckCase` |
+| B1 | work–energy balance, 20 s open loop, dt = 0.01 s, relative residual | {{checks.b1.residual:.2e}} (observed order {{checks.b1.order:.2f}}) | 1e-6 | `F16Consistency.B1WorkEnergy` |
+| B1 | the same balance, 60 s closed loop (C1), ΔE − W_nc against max ΔE | {{checks.b1_closed_loop.ratio:.2e}} | 1e-6 | `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` |
+| B2 | angular-impulse balance including the rotor, relative residual | {{checks.b2.residual:.2e}} | 1e-6 | `F16Consistency.B2AngularImpulse` |
+| S1 | mirror symmetry on symmetrized lateral tables, largest relative asymmetry | {{checks.s1.symmetrized:.1e}} | 1e-12 | `F16Consistency.S1MirrorSymmetrized` |
+| S1 | production tables and rotor (reported, not asserted) | {{checks.s1.production:.1e}} | none | `F16Consistency.S1ProductionAsymmetryReported` |
+| W1 | Galilean invariance in a uniform wind, air-relative states, largest relative difference | {{checks.w1.air_relative:.1e}} | 1e-9 | `F16Consistency.W1GalileanInvariance` |
+| W1 | ground-track offset against w·t [m] | {{checks.w1.track_m:.1e}} | 1e-6 | `F16Consistency.W1GalileanInvariance` |
+| TR2 | altitude change over 10 s from the xcg = 0.35 trim [ft] | {{checks.tr2.dh_ft:.1e}} | 1e-2 | `F16Trim.TR2Stationarity` |
+| Convergence | RK4 on the aircraft, observed order (position / attitude) | {{checks.aircraft.position_order:.2f}} / {{checks.aircraft.attitude_order:.2f}} | measured, [0.9, 4.2] | `F16Consistency.AircraftConvergenceMeasured` |
+
+A1 is the check against a published number; it comes from a secondary source (the Archimedes tutorial), a single reference lineage (PRD §8.5). The largest A1 differences are ṗ and ṙ ({{checks.a1.max_rel_rotational:.1e}}): S&L printed those two rotational equations with rounded inertia coefficients, and `docs/design.md` ("A1: rounded rotational inertia coefficients") shows that the rounded coefficients reproduce the published values to 4e-7. B1, B2, S1 and W1 do not depend on any published number.
+
+The aircraft RK4 order is about 2, not 4: the tables are piecewise linear, so the derivative is not smooth where a breakpoint is crossed. This is the reduced order PRD §2 predicted. It is measured and explained, not asserted as 4, and `docs/design.md` lists C¹ interpolation as future work.
 
 ### Trim (TR1)
 
@@ -205,6 +256,33 @@ aerodynamic feedback has grown the drift beyond the kinematic terms, which is wh
 |---|---|---|---|
 {{jsbsim.curv.table}}
 
+## Stock JSBSim F-16 (J4 appendix)
+
+JSBSim {{j4.jsbsim_version}} ships its own `f16`. This appendix trims that aircraft at the same condition as J2 (502 ft/s, level, sea level and 10,000 ft) with JSBSim's own `do_simple_trim` and sets the result beside ours. It is a **model-form** comparison: the two aircraft are different models, so there is no pass/fail beyond "runs and is explained". The script is `python/jsbsim_compare/stock_f16.py`; it runs inside `flightsim_analysis.run`.
+
+**Why trim only.** The stock flight-control system overwrites direct writes to the surfaces (spike question 7: a write to `fcs/elevator-pos-rad` is ignored; one to `fcs/elevator-pos-norm` survives one step before the scheduler, the pitch-rate/g-load PID and a 0.3 s surface kinematic overwrite it). An open-loop response would need an edited copy of a GPL file, which is out of scope.
+
+**Provenance of the stock model.** `f16.xml` is headed "General Dynamics F-16A" (an F-16A Block 32 in the basic US configuration), author Erik Hofman, GPL. Its references are the F-16 Dash-1 (1987), NASA TP-1538 wind-tunnel data, Richard Murray's Caltech F-16 model and ground-effect reports; the file states it has no relation to the manufacturer. It is not a transcription of the S&L reduced tables that `data/f16/f16_sl.toml` holds (also from TP-1538), and none of its numbers were copied here.
+
+**What is not matched.** Ours is the matched model of J2: US76 atmosphere, inverse-square gravity on a non-rotating sphere, no rotor, S&L x_cg = 0.35, weight 20,500 lbf. The stock aircraft keeps JSBSim's default planet (rotating WGS84, gravity model {{j4.gravity_model}}, flight at latitude 0 heading north) because J4 is a model-form comparison and not a matched one. Its weight is {{j4.weight_lbf:.0f}} lbf ({{j4.weight_ratio:.4f}}× ours: 17,400 lbf empty, 230 lbf pilot, {{j4.fuel_lbf:.0f}} lbf fuel, no stores), and its centre of gravity is {{j4.cg_offset_cbar:+.3f}} c̄ from the aerodynamic reference point (ours coincide at x_cg = 0.35). Sea-level Mach number is {{j4.mach:.3f}}. Three settings keep the trim clean: the file starts with the landing gear extended, which adds a large drag term, so the gear is commanded up and the trim repeated from the retracted state; the terrain is moved 5,000 ft below the aircraft so that ground contact does not stop FGTrim at sea level (the atmosphere depends on altitude above sea level and does not change); and the stick is centred.
+
+**Mapping of the controls.**
+
+| Quantity | Ours (S&L) | Stock `f16` (JSBSim property) |
+|---|---|---|
+| α | `alpha_deg` of the trim | `aero/alpha-deg` |
+| δe | elevator deflection, trailing edge down positive, ±25° | `fcs/elevator-pos-deg` (= `fcs/elevator-pos-rad`), the surface position the aerodynamic tables read; range ±0.436 rad = ±25°, trailing edge down positive (the stock pitch-moment table falls as the position rises). The pilot input `fcs/elevator-cmd-norm` stays 0; FGTrim moves `fcs/pitch-trim-cmd-norm`, which reaches the surface through the elevator scheduler, the g-load PID and the kinematic, so the trim command is not the deflection. |
+| Throttle | `throttle` ∈ [0, 1]; S&L gearing P = 64.94·thr for thr ≤ {{j4.military_throttle}}, so {{j4.military_throttle}} is military power | `fcs/throttle-cmd-norm[0]` ∈ [0, 1], doubled into `fcs/throttle-pos-norm`, where 1.0 is military power and 1 to 2 is afterburner (F100-PW-229). The two scales differ, so the table also lists the power-lever position as a fraction of military power (ours thr/{{j4.military_throttle}}, stock `throttle-pos-norm`) and the thrust in lbf. |
+| Thrust | `thrust_N` of the first row of a run from the trim state, in lbf | `propulsion/engine[0]/thrust-lbs` |
+
+Trim quality (stock, worst over both altitudes): |u̇| and |ẇ| ≤ {{j4.max_resid:.1e}} ft/s², |q̇| ≤ {{j4.max_qdot:.1e}} rad/s².
+
+| h [ft] | Quantity | Ours | Stock f16 | Stock − ours | Relative to ours |
+|---|---|---|---|---|---|
+{{j4.table}}
+
+**Reading the numbers (stock minus ours).** Angle of attack differs by {{j4.h0.alpha_diff_deg:+.2f}}° at sea level and {{j4.h10000.alpha_diff_deg:+.2f}}° at 10,000 ft, the trim elevator by {{j4.h0.elevator_diff_deg:+.2f}}° at sea level, and the trim thrust by {{j4.h0.thrust_diff_pct:+.0f}} % at sea level and {{j4.h10000.thrust_diff_pct:+.0f}} % at 10,000 ft. In level flight thrust balances drag, so the thrust difference is a difference in drag at the same speed and lift. The contributors, none of which was isolated or toggled, are the heavier stock aircraft ({{j4.weight_ratio:.4f}}× our weight), its centre-of-gravity offset, its different aerodynamic data set (a drag build-up with Mach and ground-effect terms that the S&L tables do not have) and its engine model. Unlike J3, there is no discrepancy budget: the purpose is to show how far two F-16 models built from related wind-tunnel data sit apart when nothing is matched. The matched comparison (J2, J3) shows the implementations agree within the criteria stated there; this appendix shows that the aerodynamic data set matters far more than the implementation does.
+
 ## Control (M7)
 
 Operating point: S&L model, 502 ft/s, 10,000 ft, x_cg = 0.35, actuators (lag, rate and position limits) and engine lag on, 50 Hz
@@ -266,3 +344,30 @@ Elevator limits are ±25° and 60°/s (`data/f16/f16_sl.toml`); throttle is limi
 - **B1 closed loop.** `validation_tests` `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` integrates the budget-augmented state through 60 s of C1
   and asserts `|ΔE − W_nc| / max|ΔE| < 1e-6` at dt = 0.01 s (the measured ratio is printed by the test). It holds step by step because the controller sits outside the derivative:
   inputs are constants within a step, so each step is the same smooth ODE as the open-loop budget run, and E − W_nc is conserved by it for any input history.
+
+## Traceability: README claims
+
+Every claim in `README.md` and the section of this file or the figure of `out/index.html` that shows its value. Test names are `Suite.Test` in the named binary; Python tests are in `python/tests`. "Figure" is the id in `python/flightsim_analysis/plots.py`.
+
+| Claim | Test | Scenario or script | Figure and section |
+|---|---|---|---|
+| Integrator orders are measured and inside their bounds ({{orders.in_bounds}} of {{orders.asserted}}) | `validation_tests`: `Translational.T2*`, `T3*`, `Rotational.R1*`, `R2*`, `R3*`, `Convergence.T4OrdersForApplicableIntegrators` | `scenarios/studies/core_convergence.toml` | `convergence`, `work-precision`; Convergence orders |
+| Frame and quaternion conventions point the right way | `unit_tests`: `Quat.*`, `Frames.*`; `validation_tests`: `Translational.T5DirectionOfRotation` | none | design.md §2 |
+| Torque-free rotation conserves energy and H_N; norm drift without renormalization | `Rotational.HNConservedRk4`, `Rotational.NormDriftWithoutRenormalization`, `Rotational.R3ReferenceSatisfiesEuler` | `scenarios/rb_r3_*.toml` | `drift`, `qnorm`; Conservation on R3 |
+| Intermediate-axis flip occurs and conserves H_N; spin eigenvalues match | `Rotational.R4FlipOccursAndConserves`, `SpinStability.L1SpinStability` | `scenarios/rb_dzhanibekov.toml` | `r4`; R4 intermediate-axis flip |
+| Oscillator energy: Euler grows, symplectic Euler stays bounded | `Translational.T4EulerEnergyGrows`, `LieIntegrators.SymplecticEulerOscillatorEnergyBounded` | `scenarios/rb_t4_*.toml` | `t4`; T4 harmonic oscillator |
+| The step loop allocates nothing | `alloc_tests`: `NoAlloc.Rk4StepLoopAllocatesNothing` | none | design.md §1 |
+| Runs are bitwise reproducible | `Runner.DeterministicBitwise`, `AircraftRunner.DeterministicBitwise` | none | design.md §1 |
+| F-16 data are transcribed correctly | `python/tools/f16_data_diff.py` (two-source diff); `F16Data.*` | `data/f16/f16_sl.toml`, `data/f16/resolutions.toml` | data/f16/SOURCES.md |
+| The model reproduces the published check case A1 (largest relative error {{checks.a1.max_rel:.1e}}) | `F16Model.A1CheckCase` | `data/f16/reference_values.toml` | Published check case and consistency laws |
+| Aircraft equations of motion obey work–energy and angular-impulse balances, wind invariance, mirror symmetry | `F16Consistency.B1WorkEnergy`, `B2AngularImpulse`, `W1GalileanInvariance`, `S1MirrorSymmetrized` | none | Published check case and consistency laws |
+| Aircraft RK4 order is about 2 because the tables are piecewise linear | `F16Consistency.AircraftConvergenceMeasured` | none | Published check case and consistency laws |
+| Trim reproduces published level-flight trims (largest relative difference {{trim.max_rel_pct:.3f}} %) | `F16Trim.TR1Level30`, `TR1Level35`, `TR1Level38`; `TR2Stationarity` | `scenarios/f16_trim_502_xcg03*.toml` | Trim (TR1) |
+| Linear model and modes match the published ones (eigenvalues within {{linear.modes.max_rel_pct:.2f}} %) | `F16Linear.LN1*` | `scenarios/f16_trim_502_xcg030.toml` | `ln2`, `ln3`; Linear model and modes |
+| Linear and nonlinear responses diverge quadratically (ratio {{linear.ln2.ratio:.1f}}); the finite-difference step lies in the flat region | `F16Linear.LN2QuadraticScaling`, `LN3StepSweep` | `scenarios/f16_trim_502_xcg030.toml` | `ln2`, `ln3`; LN2, LN3 |
+| JSBSim J1 to J3 agree within the stated criteria; the discrepancy budget accounts for the difference | `python/tests/test_jsbsim_compare.py`, `test_gen_xml.py`; `uv run python -m jsbsim_compare.compare --check` | `scenarios/jsbsim/*.toml`, `reference/jsbsim/` | `j3-elevator`, `j3-aileron`, `j3-rudder`, `j3-budget`; JSBSim cross-validation |
+| Stock JSBSim `f16` differs from ours by a model-form amount | `python/tests/test_stock_f16.py` | `python/jsbsim_compare/stock_f16.py` | Stock JSBSim F-16 (J4 appendix) |
+| Autopilot meets C1 to C4; anti-windup beats no anti-windup; loop margins meet C5 | `F16Autopilot.C1*` to `C4*`; `python/tests/test_design.py` | `scenarios/f16_ap_c*.toml`, `scenarios/control/autopilot_gains.toml`, `python/control_design/design.py` | `c1-overlay` to `c3-overlay`, `c2-windup`, `c4-disturbance`; Control |
+| The controller sits outside the derivative, so the closed-loop work–energy balance holds ({{checks.b1_closed_loop.ratio:.1e}}) | `F16AutopilotB1.ClosedLoopWorkEnergyBalance60s` | `scenarios/f16_ap_c1_alt100.toml` | Published check case and consistency laws |
+| F-16 benchmarks and the real-time factor ({{bench.f16.realtime_factor:.0f}}×) | none (reported, not gated) | `bench/bench_f16.cpp`, `bench/bench_integrators.cpp` | Performance |
+| A fresh clone builds and runs the demo on Linux and macOS | CI jobs `build-test` (Linux and macOS), `demo` (Linux) | `scripts/demo.sh` | README Quickstart |

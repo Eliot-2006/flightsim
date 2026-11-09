@@ -14,3 +14,10 @@ packages = ["flightsim_analysis", "jsbsim_compare", "control_design"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Everything not listed here stays visible. The one filter below is a well-understood third-party deprecation: python-control
+# assigns to ndarray.shape in control/statesp.py (lines 264-266, StateSpace construction), which NumPy 2.5 deprecates. Our code
+# only builds StateSpace systems (control_design/design.py) and cannot avoid the call. Drop the filter when python-control
+# stops setting .shape (check with `uv run pytest -W default`).
+filterwarnings = [
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning:control.statesp",
+]

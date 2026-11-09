@@ -124,3 +124,32 @@ def test_aircraft_cli_json(tmp_path, cg):
                     assert not response["out_of_domain"] and not response["cells_changed"]
                     assert len(response["cell_changes"]) == 6
                     assert all(change["ignored"] for change in response["cell_changes"])
+
+
+def test_checks_parse_the_numbers_the_tests_print(tmp_path):
+    # Fixtures are the real stdout of the A1/B1/B2/S1/W1/TR2/aircraft-convergence tests (see run.CHECKS).
+    (tmp_path / "checks").mkdir()
+    for name in ("validation", "unit"):
+        shutil.copy(Path(__file__).parent / "fixtures" / f"checks_{name}.txt", tmp_path / "checks" / f"{name}.txt")
+    c = metrics.checks(tmp_path)
+    assert c["checks.a1.max_rel"] == pytest.approx(1.99905157675e-4)  # p_dot, rounded S&L inertia coefficients
+    assert c["checks.a1.max_rel_excluding_rotational"] < 1e-4  # PRD 8.5 investigation threshold
+    assert 3.9 < c["checks.b1.order"] < 4.1 and c["checks.b1.residual"] < 1e-6
+    assert 2.0 < c["checks.aircraft.position_order"] < 2.5  # reduced order from piecewise-linear tables (PRD 2)
+    assert c["checks.s1.symmetrized"] < 1e-12 and c["checks.w1.air_relative"] < 1e-9
+
+
+def test_checks_fail_loudly_when_a_line_is_missing(tmp_path):
+    (tmp_path / "checks").mkdir()
+    (tmp_path / "checks" / "validation.txt").write_text("B1 dt=0.01 residual=1e-10\n")
+    (tmp_path / "checks" / "unit.txt").write_text("")
+    with pytest.raises(ValueError):
+        metrics.checks(tmp_path)
+
+
+def test_bench_table_puts_target_beside_measurement_and_states_a_miss():
+    m = {key: limit / 2 for key, _, limit, *_ in metrics.BENCH_TARGETS}
+    assert metrics.bench_f16_table(m)["bench.f16.misses"] == 0
+    m["bench.f16.BM_F16Deriv.ns"] = 401.0  # PRD 11 target is 400 ns
+    t = metrics.bench_f16_table(m)
+    assert t["bench.f16.misses"] == 1 and "**missed**" in t["bench.f16.table"] and "≤ 400 ns" in t["bench.f16.table"]
