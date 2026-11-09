@@ -26,7 +26,7 @@ OMEGA = np.geomspace(1e-5, 1e4, 6000)
 
 def load_plant():
     """CLI ideal-surface Jacobian + elevator lag + half-period Padé delays."""
-    scenario = ROOT / "scenarios/f16_ap_trim.toml"
+    scenario = ROOT / "scenarios/control/f16_ap_trim.toml"
     text = scenario.read_text()
     settings = tomllib.loads(text)
     data_path = ROOT / settings["aircraft"]["data"]
@@ -137,7 +137,7 @@ def synthesize(plant):
     ])
     trim_delta = np.linalg.solve(trim_system, np.r_[np.zeros(n), 1, 0])
     slope = float(plant.C[1] @ trim_delta[:n])
-    scenario = tomllib.loads((ROOT / "scenarios/f16_ap_trim.toml").read_text())
+    scenario = tomllib.loads((ROOT / "scenarios/control/f16_ap_trim.toml").read_text())
     gains = {"rate_hz": RATE_HZ, "crossfeed": {
         "airspeed_to_pitch": slope,
         "reference_airspeed_mps": scenario["trim"]["V_fps"] * .3048,

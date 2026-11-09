@@ -341,7 +341,7 @@ anti-windup only disables tracking, preserving the same saturation and PID law.
 
 ### M7a: control operating point and linear model
 
-The orchestrator-selected condition in `scenarios/f16_ap_trim.toml` is the S&L
+The orchestrator-selected condition in `scenarios/control/f16_ap_trim.toml` is the S&L
 model, V = **502 ft/s**, h = **10,000 ft**, gamma = 0, xcg = 0.35, SlAdc,
 g = data.g_sl = 32.17 ft/s², rotor on, actuators **enabled**, engine lag on,
 and controller rate **50 Hz**. This replaces the PRD's provisional sea-level-ish
