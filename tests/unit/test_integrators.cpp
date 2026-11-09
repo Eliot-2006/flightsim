@@ -47,7 +47,12 @@ TEST(Integrators, StepDispatcherCountsEvaluations) {
   EXPECT_EQ(st.nfev, 1);
   step(Integrator::RK4, f, 0.0, x, 0.1, true, st);
   EXPECT_EQ(st.nfev, 5);
-  EXPECT_THROW(step(Integrator::RKMK4, f, 0.0, x, 0.1, true, st), std::logic_error);  // arrives in M2
+  step(Integrator::RKMK4, f, 0.0, x, 0.1, true, st);
+  EXPECT_EQ(st.nfev, 9);
+  step(Integrator::LieEuler, f, 0.0, x, 0.1, true, st);
+  EXPECT_EQ(st.nfev, 10);
+  step(Integrator::SymplecticEuler, f, 0.0, x, 0.1, true, st);
+  EXPECT_EQ(st.nfev, 11);
 }
 
 TEST(Integrators, NamesRoundTrip) {

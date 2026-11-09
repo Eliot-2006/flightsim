@@ -85,6 +85,9 @@ CaseDef case_T4() {
             20.0,
             {}};
   c.exact = [=](double t) { return from_pv(exact_spring(m, k, p0, v0, t)); };
+  c.energy = [=](const Vec<13>& x) {
+    return .5 * (m * rb::vel(x).squaredNorm() + k.dot(rb::pos(x).cwiseAbs2()));
+  };
   return c;
 }
 
@@ -110,4 +113,74 @@ CaseDef case_T5() {
   return c;
 }
 
+// R1: principal-axis spin, I=(1,2,3) kg m^2, omega3=1.3 rad/s, T=10 s; tilted q0.
+CaseDef case_R1() {
+  const Vec4 q0 = quat_from_euler(.3, -.4, .5);
+  CaseDef c{"R1",
+            {1, Vec3(1, 2, 3).asDiagonal()},
+            Vec3::Zero(),
+            {},
+            make_state(Vec3::Zero(), Vec3::Zero(), q0, Vec3(0, 0, 1.3)),
+            10,
+            {}};
+  const auto x0 = c.x0;
+  c.exact = [=](double t) {
+    Vec<13> x = x0;
+    rb::quat(x) = quat_mul(q0, quat_from_rotvec(Vec3(0, 0, 1.3 * t)));
+    return x;
+  };
+  return c;
+}
+
+// R2: symmetric top I=(2,2,1), omega0=(.3,.4,2), Euler(10,20,30) degrees, T=10 s.
+CaseDef case_R2() {
+  const Vec4 q0 = quat_from_euler(10 * units::deg, 20 * units::deg, 30 * units::deg);
+  CaseDef c{"R2",
+            {1, Vec3(2, 2, 1).asDiagonal()},
+            Vec3::Zero(),
+            {},
+            make_state(Vec3::Zero(), Vec3::Zero(), q0, Vec3(.3, .4, 2)),
+            10,
+            {}};
+  const auto x0 = c.x0;
+  const auto mp = c.mp;
+  c.exact = [=](double t) { return exact_symmetric_top(x0, mp, t); };
+  return c;
+}
+
+// R3: low-energy LL branch I=(1,2,3), omega0=(.5,0,1), L^2=9.25>2E I2=6.5, T=20 s.
+CaseDef case_R3() {
+  CaseDef c{"R3",
+            {1, Vec3(1, 2, 3).asDiagonal()},
+            Vec3::Zero(),
+            {},
+            make_state(Vec3::Zero(), Vec3::Zero(), quat_from_euler(.3, -.4, .5), Vec3(.5, 0, 1)),
+            20,
+            {}};
+  const Vec3 I(1, 2, 3), w0 = rb::omega(c.x0);
+  c.exact_omega = [=](double t) { return exact_asymmetric_omega(I, w0, t); };
+  return c;
+}
+
+// R4: intermediate-axis instability, I=(1,2,3), omega0=(.001,1,.001), T=60 s.
+CaseDef case_R4() {
+  return {"R4",
+          {1, Vec3(1, 2, 3).asDiagonal()},
+          Vec3::Zero(),
+          {},
+          make_state(Vec3::Zero(), Vec3::Zero(), quat_from_euler(.3, -.4, .5), Vec3(.001, 1, .001)),
+          60,
+          {}};
+}
+
+// R5: constant rotor h=(.5,0,0) kg m^2/s, I=(1,2,3), omega0=(.2,.3,.4), T=20 s.
+CaseDef case_R5() {
+  return {"R5",
+          {1, Vec3(1, 2, 3).asDiagonal(), Vec3(.5, 0, 0)},
+          Vec3::Zero(),
+          {},
+          make_state(Vec3::Zero(), Vec3::Zero(), quat_from_euler(.3, -.4, .5), Vec3(.2, .3, .4)),
+          20,
+          {}};
+}
 }  // namespace flightsim::validation

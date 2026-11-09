@@ -7,13 +7,15 @@
 #include "flightsim/sim/output.hpp"
 #include "flightsim/sim/runner.hpp"
 #include "flightsim/sim/scenario.hpp"
+#include "flightsim/validation/convergence.hpp"
 #include "flightsim/version.hpp"
 
 namespace {
 
 int usage() {
   std::cerr << "usage: flightsim --version\n"
-               "       flightsim run <scenario.toml> --out <dir>\n";
+               "       flightsim run <scenario.toml> --out <dir>\n"
+               "       flightsim converge <study.toml> --out <dir>\n";
   return 2;
 }
 
@@ -43,9 +45,13 @@ int main(int argc, char** argv) {
     std::cout << "flightsim " << flightsim::version_string() << '\n';
     return 0;
   }
-  if (argc == 5 && std::strcmp(argv[1], "run") == 0 && std::strcmp(argv[3], "--out") == 0) {
+  if (argc == 5 && (std::strcmp(argv[1], "run") == 0 || std::strcmp(argv[1], "converge") == 0) &&
+      std::strcmp(argv[3], "--out") == 0) {
     try {
-      return cmd_run(argv[2], argv[4]);
+      if (std::strcmp(argv[1], "run") == 0) return cmd_run(argv[2], argv[4]);
+      flightsim::validation::write_convergence_study(argv[2], argv[4]);
+      std::cout << "wrote convergence.csv, orders.json and norm_conservation.csv to " << argv[4] << '\n';
+      return 0;
     } catch (const std::exception& e) {
       std::cerr << "error: " << e.what() << '\n';
       return 2;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "flightsim/math/quat.hpp"
+#include "flightsim/core/rigid_body.hpp"
 
 // Closed-form translational solutions (PRD 8.2). All in NED SI units, z down.
 namespace flightsim::validation {
@@ -33,5 +33,11 @@ struct RotatingForceSolution {
 };
 RotatingForceSolution exact_rotating_body_force(double m, double F, double Omega, const Vec4& q0,
                                                 const Vec3& p0, const Vec3& v0, double t);
+
+double rotational_energy(const Vec<13>& x, const MassProps& mp);
+Vec3 angular_momentum_N(const Vec<13>& x, const MassProps& mp);
+// Low-energy LL section 37 branch: sorted principal inertias, omega2(0)=0, L^2 > 2E I2.
+Vec3 exact_asymmetric_omega(const Vec3& inertia, const Vec3& omega0, double t);
+Vec<13> exact_symmetric_top(const Vec<13>& x0, const MassProps& mp, double t);
 
 }  // namespace flightsim::validation

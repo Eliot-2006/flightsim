@@ -1,0 +1,51 @@
+# PRD 10.3 assertion pairs. Step windows avoid pre-asymptotic error and the roundoff floor.
+[[studies]]
+cases = ["T2", "T3"]
+integrators = ["euler", "rk4"]
+h0 = 0.1
+levels = 8
+
+[[studies]]
+cases = ["T4"]
+integrators = ["euler", "symplectic_euler"]
+h0 = 0.00625
+levels = 8
+
+[[studies]]
+cases = ["T4"]
+integrators = ["rk4"]
+h0 = 0.025
+levels = 8
+
+[[studies]]
+cases = ["R1"]
+integrators = ["euler"]
+h0 = 0.1
+levels = 8
+# Constant-rate Euler angle superconverges at order 2; norm drift of the unprojected q is order 1.
+renormalize = false
+
+[[studies]]
+cases = ["R1"]
+integrators = ["rk4"]
+h0 = 0.1
+levels = 8
+
+[[studies]]
+cases = ["R2"]
+integrators = ["euler", "rk4", "lie_euler", "rkmk4"]
+h0 = 0.1
+levels = 8
+
+[[studies]]
+cases = ["R3"]
+integrators = ["euler", "lie_euler"]
+h0 = 0.025
+levels = 8
+
+[[studies]]
+cases = ["R3"]
+integrators = ["rk4", "rkmk4"]
+# Coarser fourth-order window keeps the finest attitude error above reference roundoff.
+h0 = 0.4
+levels = 8
