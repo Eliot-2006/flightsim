@@ -119,6 +119,11 @@ def build_html(out: Path, m: dict) -> str:
 <style>{CSS}</style><script>{plotly_js}</script></head>
 <body><main>
 <header class="text"><h1>flightsim validation report</h1>
+<p>A C++20 six-degree-of-freedom rigid-body and F-16 flight dynamics simulator, validated against closed-form solutions,
+published reference data and the JSBSim flight dynamics engine. This page is regenerated from source on every push.
+<a href="https://github.com/Eliot-2006/flightsim">Source code and README</a> ·
+<a href="https://github.com/Eliot-2006/flightsim/blob/main/docs/design.md">Design and decision log</a> ·
+<a href="https://github.com/Eliot-2006/flightsim/blob/main/docs/results.md">All results</a></p>
 <p>Rigid-body core: {m['orders.in_bounds']} of {m['orders.asserted']} asserted convergence orders are inside their bounds
 (first-order methods {m['orders.first.min']:.3f}–{m['orders.first.max']:.3f}, fourth-order {m['orders.fourth.min']:.3f}–{m['orders.fourth.max']:.3f}).
 Aircraft: JSBSim J3 worst difference {m['jsbsim.j3.worst']:.2f} % of peak (limit 2 %); autopilot C1 overshoot {m['control.c1.overshoot']:.2f} %, 2 % settling {m['control.c1.settling']:.1f} s.

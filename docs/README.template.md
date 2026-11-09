@@ -1,10 +1,42 @@
-# flightsim
+# flightsim — a validated 6-DOF flight dynamics simulator
 
-flightsim is a C++20 six-degree-of-freedom rigid-body simulator and an F-16 flight-dynamics model, built so that every physical claim can be traced to a test or a reproducible measurement in this repository. The generic engine (quaternion attitude, five integrators) is checked against closed-form solutions, among them torque-free asymmetric rotation through Jacobi elliptic functions, with measured convergence orders and conservation laws asserted in CI. The aircraft model, NASA TP-1538 data as tabulated by Stevens, Lewis & Johnson, is checked against published check cases, work–energy and angular-impulse balances, and an independent simulator (JSBSim) running a generated copy of the same tables. Trim, linearization and an altitude and airspeed autopilot sit on top of it. Where a reference is weaker than it looks (a single secondary source, a different model), this README says so.
+[![CI](https://github.com/Eliot-2006/flightsim/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Eliot-2006/flightsim/actions/workflows/ci.yml)
+[![Live report](https://img.shields.io/badge/live_report-eliot--2006.github.io%2Fflightsim-2f6feb)](https://eliot-2006.github.io/flightsim/)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> Generated from `docs/README.template.md` by `python -m flightsim_analysis.report`; every number comes from `out/metrics.json`, written by the same demo run (`scripts/demo.sh`).
+A C++20 rigid-body and F-16 flight simulator built to be **checked, not just run**: every physical claim in this README is backed by an automated test or a reproducible measurement, and the aircraft model is cross-validated against [JSBSim](https://github.com/JSBSim-Team/jsbsim), the open-source flight dynamics engine used in FlightGear and in aerospace research.
+
+**[→ Explore the interactive validation report](https://eliot-2006.github.io/flightsim/)**: every figure, rebuilt from source by CI on each push.
+
+![flightsim and JSBSim responses to the same elevator doublet, overlaid: the curves are indistinguishable](docs/img/j3-elevator.png)
+*Same F-16 data, two independent simulators: flightsim (solid) and JSBSim (dashed) after an elevator doublet. Worst difference over three maneuvers and nine signals: {{jsbsim.j3.worst:.2f}} % of peak.*
+
+## At a glance
+
+- **Physics engine.** 6-DOF rigid-body dynamics with quaternion attitude and five integrators: Euler, RK4, symplectic Euler, and two Lie-group methods (Lie–Euler, RKMK4). {{orders.in_bounds}} of {{orders.asserted}} measured convergence orders land inside their theoretical bounds.
+- **Aircraft model.** Nonlinear F-16 from NASA wind-tunnel data (TP-1538) with an engine model and actuator dynamics. It reproduces the published textbook check case to a relative error of {{checks.a1.max_rel:.0e}}.
+- **Flight mechanics.** Trim solver, numerical linearization and modal analysis (short period, phugoid, Dutch roll, roll, spiral). Trim matches published values within {{trim.max_rel_pct:.3f}} %, and eigenvalues within {{linear.modes.max_rel_pct:.2f}} %.
+- **Control.** Cascaded altitude and airspeed autopilot with actuator limits and anti-windup. Designed on the linear model (margins ≥ {{control.c5.worst_gm:.0f}} dB and {{control.c5.worst_pm:.0f}}°) and verified on the nonlinear model: a +100 ft step settles in {{control.c1.settling:.0f}} s with {{control.c1.overshoot:.1f}} % overshoot.
+- **Independent validation.** Closed-form solutions (including Jacobi elliptic functions for torque-free rotation), energy and angular-momentum balances, published reference data, and a matched-model JSBSim comparison with a quantified discrepancy budget.
+- **Engineering.** Zero heap allocation in the step loop and {{bench.f16.realtime_factor:.0f}}× real time on a 60 s closed-loop F-16 run. CI covers GCC, Clang and AppleClang, ASan and UBSan, gated line coverage, and a one-command reproducible demo.
+
+**Stack:** C++20 · Eigen · CMake · GoogleTest · Google Benchmark · Python (NumPy, SciPy, python-control, Plotly) · JSBSim · GitHub Actions
+
+## Engineering highlights
+
+The decisions and findings most worth discussing. Each is documented, with its rationale, in [`docs/design.md`](docs/design.md).
+
+- **A fair comparison with JSBSim, not a cosmetic one.** JSBSim's stock F-16 uses different data, so this repo generates a JSBSim aircraft from the *same* data file the C++ code reads. It then removes every known difference: Earth rotation, the gravity model, the product-of-inertia sign convention and table-edge behavior. What remains is quantified source by source in a discrepancy budget.
+- **Lie-group integration on the attitude manifold.** RKMK4 keeps the quaternion exactly unit-norm without renormalization. A subtle sign in the inverse exponential map (body-frame right multiplication needs `+½ Θ×ω`) silently drops the method to second order; a dedicated regression test pins it.
+- **Predicting where theory stops applying.** Linearly interpolated aerodynamic tables are not smooth, so RK4 cannot show fourth order on the aircraft. The project predicts this, then measures it (≈ 2nd order) instead of claiming 4.
+- **Energy *balances* instead of conservation.** An aircraft gains and loses energy, so the tests check that the change in total energy equals the work done by aerodynamic and thrust forces, and the same for angular momentum. These checks catch equation-of-motion errors independently of the aerodynamic data.
+- **Anti-windup that actually helps.** The first anti-windup tuning met its overshoot target but never settled. Re-deriving the back-calculation tracking time from the controller design (tt = Ti) cut C2 settling from {{control.c2n.settling:.0f}} s without anti-windup to {{control.c2.settling:.0f}} s with it.
+- **Honest about evidence.** Published reference values come from a single secondary lineage (the textbook was not available), and every table below labels how strong each reference is.
 
 ## Headline numbers
+
+> This README is generated from `docs/README.template.md` by `python -m flightsim_analysis.report`. Every number comes from `out/metrics.json`, written by the same demo run (`scripts/demo.sh`).
 
 The last column names the test or scenario that produces each number. Bounds are the ones a test enforces; "none" means the value is reported, not asserted. [`docs/results.md`](docs/results.md) has every table and a [traceability table](docs/results.md#traceability-readme-claims) from each claim to its test, scenario and figure.
 
