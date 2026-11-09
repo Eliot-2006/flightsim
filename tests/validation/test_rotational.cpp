@@ -140,8 +140,12 @@ TEST(Rotational, NormDriftWithoutRenormalization) {
                      angular_momentum_N(c.x0, c.mp).norm();
     std::printf("[norm/conservation] R2 %s projection=false norm=%.12g E=%.12g H=%.12g\n", to_string(method),
                 norm, E, H);
-    if (method == Integrator::RKMK4) EXPECT_LE(norm, 1e-13);  // Task 2.2 Lie norm bound.
-    if (method == Integrator::Euler) EXPECT_GT(norm, .01);    // Positive Euler radial error after 1000 steps.
+    if (method == Integrator::RKMK4) {
+      EXPECT_LE(norm, 1e-13);  // Task 2.2 Lie norm bound.
+    }
+    if (method == Integrator::Euler) {
+      EXPECT_GT(norm, .01);  // Positive Euler radial error after 1000 steps.
+    }
   }
 }
 
