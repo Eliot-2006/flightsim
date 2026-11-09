@@ -97,6 +97,14 @@ Implemented in `validation/convergence.*`; normative text in PRD §6.3.
 
 ## 4. Decision log
 
+### M4 wind profile
+
+`WindModel` adds a constant NED wind and an optional MIL-F-8785C 1-cos discrete
+gust, applied as a full rise and fall over its duration. The peak is the specified
+amplitude along the normalized NED direction at the midpoint; endpoints are zero.
+This is a frozen time profile: spatial gradients and rotational gusts are neglected
+(PRD §5.4). Event alignment belongs to the scenario caller.
+
 From PRD §1.2 (engineering calls made with the specification):
 
 | Call | Rationale |
