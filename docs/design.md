@@ -216,3 +216,67 @@ and retains the [0.9, 4.2] order bounds. Piecewise-linear tables reduce smoothne
 at cell crossings, so aircraft order is measured rather than assumed to be four.
 The smooth-case harness, its asymptotic-window selection and its 1e-3
 reference-accuracy rule are unchanged.
+
+### M5: trim and linearization conventions
+
+Trim solves `[Vdot/g, alphadot, qdot]` for alpha, throttle and elevator using
+central differences and a three-variable Levenberg–Marquardt system. All three
+published level cases converge below the unchanged 1e-10 infinity-norm bound.
+TR2 retains its original bounds: the observed 10 s altitude drift at xcg=.35 is
+-8.4e-13 ft. At sea level this flags a subpicometer negative-altitude thrust
+lookup; the implementation does not clamp the physics or hide that diagnostic.
+
+LN1 uses xcg=.30 exclusively. The full 13-state Jacobian includes power lag;
+mode comparisons remove the power state and use `[V,alpha,theta,q]`, holding P
+at trim, because the reference has a tabulated engine. The lateral subset is
+`[beta,phi,p,r]`. For the tutorial B, throttle uses the algebraic steady-engine
+response `B_xu - A_xP B_Pu/A_PP`; elevator columns convert rad to deg, and V
+rows/columns convert m/s to ft/s. These operations run in C++, not Python.
+The trim result is rejected if its final lookup monitor flags any extrapolation,
+including engine Mach/altitude or elevator table limits; CLI trim JSON also
+reports trial lookup flags. Climbing-response exports subtract nominal altitude
+travel along with horizontal travel, so all exported coordinates are perturbations.
+The published longitudinal matrices are tutorial-computed and the lateral
+matrix/eigenvalues are textbook values quoted by a secondary source. All share
+one Archimedes lineage; multiple citations do not make them independent.
+
+Printed-digit floors from PRD §8.5 matter: tutorial A[alpha,V] prints -0.0003,
+where ours is -0.00025372513 (difference +4.62749e-5); the two small B entries
+print -0.0021/-0.0022, where ours is -0.0020501361/-0.0021507102. These are
+within one last printed digit. Relative bounds remain 1% for textbook values
+and 2% for tutorial matrices. No tolerance or source number has been changed.
+The small rotational differences remain consistent with the rounded-inertia
+finding in A1; there is no calibration of the production inertia.
+
+At xcg=.35 the short-period pair splits into real longitudinal roots, one
+unstable. The CLI preserves these as `longitudinal_real_1/2` rather than forcing
+a complex-mode classification. The canonical published five-mode comparison
+is performed only at xcg=.30.
+
+### M5: LN2 literal breakpoint guard (unresolved)
+
+The specified sea-level, rotor-on, ideal-surface elevator steps (-0.5 and
+-0.05 deg, 5 s, RK4 dt=.01) give max-error norms 0.302952703602 and
+0.003144750990, a ratio of 96.3359912 within the unchanged [70,130] bound.
+Nevertheless the binding no-cell-change guard **fails**. At t=.01 s the
+large-step beta becomes -3.27642e-9 deg, leaving the beta=0 breakpoint toward
+negative beta. DLDA, DLDR, DNDA and DNDR change from cell 15 to 14. These
+lookups' control multipliers are zero in an elevator-only run, but the monitor
+records every lookup and the test does not discard them. This is a boundary
+departure induced by the physical rotor coupling, not a finite-difference or
+input-unit error. The large-step alpha stays below 5 deg (3.62053 deg at 5 s).
+
+The step also first evaluates the thrust table at h=-4.113491259e-6 m during
+an initial downward transient (trailing-edge-up elevator reduces lift before
+pitch builds). Thus strict in-domain monitoring also fails at sea level. A
+probe at 10,000 ft avoids the domain violation but crosses alpha=5 deg at
+1.63 s and the engine altitude breakpoint at 10,000 ft; it is not a remedy.
+No lookup, gravity, rotor, tolerance or assertion is changed to manufacture a
+pass. An amendment to the LN2 operating point/monitor protocol needs an owner
+decision. The CLI and generated report expose the failed monitor verdict.
+
+LN3 at xcg=.30 selects epsilon=6e-6. The maximum relative matrix-entry changes
+against 6e-5 and 6e-7 are 5.94017e-10 and 1.39313e-10, both below 1e-5. The
+1e-2 through 1e-10 sweep exhibits truncation, a flat region and roundoff; each
+matrix is normalized by its own maximum absolute entry. The generated report
+contains every TR1, LN1 and LN3 difference and labels LN2 as failing.
