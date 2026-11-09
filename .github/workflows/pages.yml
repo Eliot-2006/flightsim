@@ -27,6 +27,7 @@ jobs:
         run: |
           mkdir -p _site
           cp out/index.html _site/index.html
+          cp docs/img/j3-elevator.png _site/og.png   # link-preview image (og:image)
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
