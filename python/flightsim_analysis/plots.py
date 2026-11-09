@@ -249,3 +249,78 @@ FIGURES.extend([
            "Trailing-edge-up steps of 0.5° and 0.05° over 5 s from a fresh 100 ft trim, computed in C++. The ratio and lookup-monitor verdict are reported in docs/results.md; the guard excludes only zero-multiplier lateral controls and the asserted smooth beta=0 fold.",
            "validation_tests: F16Linear.LN2QuadraticScaling (ratio [70,130] AND no active table kink crossed)", ln2),
 ])
+
+
+# ---------------------------------------------------------------- JSBSim cross-validation (J3, discrepancy budget)
+def _compare(out: Path) -> dict:
+    return json.loads((out / "jsbsim" / "compare.json").read_text())
+
+
+def _j3_overlay(case: str, signals: list[str]):
+    def build(out: Path) -> go.Figure:
+        from .metrics import SIGNAL_LABEL
+
+        c = _compare(out)
+        s = c["series"][case]
+        fig = make_subplots(rows=2, cols=2, shared_xaxes=True, vertical_spacing=0.14, horizontal_spacing=0.12,
+                            subplot_titles=[SIGNAL_LABEL[k] for k in signals])
+        for i, k in enumerate(signals):
+            r, col = divmod(i, 2)
+            fig.add_trace(go.Scatter(x=s["t_s"], y=s[k]["ours"], mode="lines", name="flightsim (RK4, 1/2400 s)", legendgroup="o",
+                                     showlegend=i == 0, meta=0, line=dict(color=LIGHT[0], width=3)), row=r + 1, col=col + 1)
+            fig.add_trace(go.Scatter(x=s["t_s"], y=s[k]["jsbsim"], mode="lines", name="JSBSim (AB3, 1/2400 s)", legendgroup="j",
+                                     showlegend=i == 0, meta=1, line=dict(color=LIGHT[1], width=2, dash="dash")), row=r + 1, col=col + 1)
+            fig.update_yaxes(title_text=SIGNAL_LABEL[k].split(" ", 1)[1].strip("[]"), row=r + 1, col=col + 1)
+            if r == 1:
+                fig.update_xaxes(title_text="time t [s]", row=r + 1, col=col + 1)
+        return _style(fig, 560)
+
+    return build
+
+
+def j3_budget(out: Path) -> go.Figure:
+    """Worst |change of any J3 metric| per budget source, against the 2 % criterion (log axis)."""
+    from .metrics import BUDGET_ROWS
+
+    c = _compare(out)
+    names, vals = [], []
+    for key, label in BUDGET_ROWS:
+        eff = [abs(v) for e in c["budget"][key].values() for v in e["effect"].values() if v is not None]
+        names.append(label)
+        vals.append(max(eff) * 100)
+    rem = [v for e in c["budget"]["all_explained"].values() for v in e["metrics"].values() if v is not None]
+    names.append("Unexplained remainder")
+    vals.append(max(rem) * 100)
+    base = [v for e in c["J3"].values() for v in e["metrics"].values() if v is not None]
+    names.append("Baseline J3 difference")
+    vals.append(max(base) * 100)
+    vals = [max(v, 1e-9) for v in vals]  # zero effects are drawn at the floor
+    fig = go.Figure(go.Bar(y=names[::-1], x=vals[::-1], orientation="h", meta=0, marker=dict(color=LIGHT[0]),
+                           hovertemplate="%{y}<br>%{x:.3g} % of peak<extra></extra>"))
+    fig.add_vline(x=c["criteria"]["J3_rel"] * 100, line_dash="dash", line_color=START_MARKER,
+                  annotation_text="J3 criterion 2 %")
+    fig.update_xaxes(type="log", range=[-9.3, 1], title_text="largest change of any J3 metric [% of the signal's peak deviation]")
+    fig.update_yaxes(automargin=True)
+    return _style(fig, 520).update_layout(margin=dict(l=20, r=20, t=40, b=60))
+
+
+FIGURES.extend([
+    Figure("j3-elevator", "J3: elevator doublet, flightsim vs JSBSim",
+           "Deviation from each simulator's own trim (502 ft/s, 10,000 ft) for ±1° elevator pulses at 1–2 s and 2–3 s. "
+           "The curves overlap to within the line width; the numerical differences are in docs/results.md.",
+           "python/tests/test_jsbsim_compare.py and `python -m jsbsim_compare.compare --check` (max difference ≤ 2 % of peak)",
+           _j3_overlay("elev_doublet", ["V", "alpha", "q", "theta"])),
+    Figure("j3-aileron", "J3: aileron pulse, flightsim vs JSBSim",
+           "Deviation from own trim for a 2° aileron pulse at 1–2 s: sideslip, roll rate, yaw rate and bank angle.",
+           "python/tests/test_jsbsim_compare.py and `python -m jsbsim_compare.compare --check`",
+           _j3_overlay("ail_pulse", ["beta", "p", "r", "phi"])),
+    Figure("j3-rudder", "J3: rudder doublet, flightsim vs JSBSim",
+           "Deviation from own trim for ±2° rudder pulses at 1–2 s and 2–3 s.",
+           "python/tests/test_jsbsim_compare.py and `python -m jsbsim_compare.compare --check`",
+           _j3_overlay("rud_doublet", ["beta", "p", "r", "phi"])),
+    Figure("j3-budget", "J3 discrepancy budget",
+           "Each candidate source of disagreement is toggled or bounded on its own and the change in the largest J3 "
+           "difference is plotted (log axis; exact zeros are drawn at the floor). The unexplained remainder applies all "
+           "explained corrections at once.",
+           "python/tests/test_jsbsim_compare.py (budget structure) and `python -m jsbsim_compare.compare --check`", j3_budget),
+])
