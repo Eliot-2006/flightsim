@@ -24,6 +24,9 @@ add_library(flightsim_core STATIC
   src/flightsim/math/frames.cpp
   src/flightsim/core/rigid_body.cpp
   src/flightsim/core/forces.cpp
+  src/flightsim/math/interp.cpp
+  src/flightsim/aircraft/f16_data.cpp
+  src/flightsim/env/atmosphere.cpp
   src/flightsim/validation/analytic.cpp
   src/flightsim/validation/cases.cpp
   src/flightsim/validation/convergence.cpp
@@ -52,7 +55,10 @@ add_executable(unit_tests
   tests/unit/test_rigid_body.cpp
   tests/unit/test_integrators.cpp
   tests/unit/test_scenario.cpp
-  tests/unit/test_runner.cpp)
+  tests/unit/test_runner.cpp
+  tests/unit/test_interp.cpp
+  tests/unit/test_f16_data.cpp
+  tests/unit/test_atmosphere.cpp)
 target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(unit_tests)
 target_compile_definitions(unit_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
