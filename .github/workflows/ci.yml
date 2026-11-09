@@ -115,7 +115,8 @@ jobs:
             out/metrics.json
 
   coverage:
-    # PRD 10.5 (should): llvm-cov line coverage of src/. Reported for core/, math/ and analysis/; see the gate step.
+    # PRD 10.5 (should): llvm-cov line coverage of src/, gated at 85 % on core/, math/ and analysis/ (96.4 % when measured
+    # with clang-18 in an ubuntu:24.04 container at M8; the whole of src/ is reported but not gated).
     runs-on: ubuntu-24.04
     env:
       CC: clang-18
@@ -134,6 +135,8 @@ jobs:
           echo "## Line coverage, core/ math/ analysis/" >> "$GITHUB_STEP_SUMMARY"
           llvm-cov-18 export $OBJ -instr-profile=build/cov/all.profdata -summary-only src/flightsim/core src/flightsim/math src/flightsim/analysis \
             | jq -r '.data[0].totals.lines.percent' | tee lines.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate (PRD 10.5 target, 85 % lines)
+        run: awk -v c="$(cat lines.txt)" 'BEGIN { print "line coverage " c " %"; exit !(c >= 85) }'
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
