@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- GENERATED. Spherical non-rotating Earth; GM set so g(0) = 9.80665 m/s^2. -->
+<planet name="Earth-sphere-nonrot">
+  <semimajor_axis unit="FT">20925646.32546</semimajor_axis>
+  <semiminor_axis unit="FT">20925646.32546</semiminor_axis>
+  <rotation_rate unit="RAD/SEC">0.0</rotation_rate>
+  <GM unit="FT3/SEC2">1.4088458419743268e+16</GM>
+  <J2>0.0</J2>
+</planet>
