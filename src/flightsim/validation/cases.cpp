@@ -85,6 +85,9 @@ CaseDef case_T4() {
             20.0,
             {}};
   c.exact = [=](double t) { return from_pv(exact_spring(m, k, p0, v0, t)); };
+  c.energy = [=](const Vec<13>& x) {
+    return .5 * (m * rb::vel(x).squaredNorm() + k.dot(rb::pos(x).cwiseAbs2()));
+  };
   return c;
 }
 

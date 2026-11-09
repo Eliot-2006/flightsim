@@ -54,6 +54,7 @@ add_executable(unit_tests
   tests/unit/test_integrators.cpp
   tests/unit/test_lie_integrators.cpp
   tests/unit/test_elliptic.cpp
+  tests/unit/test_jacobian.cpp
   tests/unit/test_scenario.cpp
   tests/unit/test_runner.cpp)
 target_link_libraries(unit_tests PRIVATE flightsim_core GTest::gtest_main)
@@ -64,7 +65,8 @@ gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 add_executable(validation_tests
   tests/validation/test_smoke_validation.cpp
   tests/validation/test_translational.cpp
-  tests/validation/test_rotational.cpp)
+  tests/validation/test_rotational.cpp
+  tests/validation/test_spin_stability.cpp)
 target_link_libraries(validation_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(validation_tests)
 gtest_discover_tests(validation_tests PROPERTIES LABELS validation)

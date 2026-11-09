@@ -17,7 +17,9 @@ struct CaseDef {
   std::vector<ForceModel> forces;
   Vec<13> x0;
   double t_final;
-  std::function<Vec<13>(double t)> exact;          // empty -> no full-state closed form
+  std::function<Vec<13>(double t)> exact;  // empty -> no full-state closed form
+  std::function<double(const Vec<13>&)> energy =
+      {};                                          // Optional case invariant; default is rotational energy.
   std::function<Vec3(double t)> exact_omega = {};  // R3: elliptic rates, attitude needs a fine reference
 };
 

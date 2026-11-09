@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -17,7 +18,7 @@ struct RunResult {
   Vec<13> x_final;
   long nfev;
 };
-// Fixed-step integration to c.t_final; h must divide t_final. Throws for integrators not implemented yet.
+// Fixed-step integration to c.t_final; h must be positive, finite and divide t_final.
 RunResult integrate_case(const CaseDef& c, Integrator integ, double h, bool renormalize = true);
 
 struct ConvergenceRow {
@@ -26,9 +27,15 @@ struct ConvergenceRow {
   double h;
   ErrorNorms err;
   long nfev;
+  double err_E = 0, err_H = 0, err_qnorm = 0;  // Relative invariant drifts, absolute quaternion norm drift.
 };
-// h_k = h0 / 2^k, k = 0..levels-1, error at t_final against c.exact (throws if the case has no closed form).
-std::vector<ConvergenceRow> convergence_study(const CaseDef& c, Integrator integ, double h0, int levels);
+// h_k = h0 / 2^k. Uses an analytic reference, or independent RK4 refined per PRD 6.3.
+// Throws if reference accuracy cannot be established (including roundoff-limited studies).
+std::vector<ConvergenceRow> convergence_study(const CaseDef& c, Integrator integ, double h0, int levels,
+                                              bool renormalize = true);
+
+// Parse a study TOML and write convergence.csv, orders.json and norm_conservation.csv.
+void write_convergence_study(const std::filesystem::path& study, const std::filesystem::path& out);
 
 // Least-squares slope of log(err) vs log(h) over the asymptotic window (PRD 6.3): the finest run of levels
 // whose error exceeds 1e3*eps*scale (above the roundoff floor) and whose successive local orders p_k agree
