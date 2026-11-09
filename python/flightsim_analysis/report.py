@@ -101,6 +101,8 @@ def build_html(out: Path, m: dict) -> str:
                   for n in metrics_mod.INTEGRATORS]
     bench_rows = [[plots.LABEL[n], f"{m[f'bench.step.{n}.ns']:.0f}", f"{m[f'bench.r3run.{n}.us']:.0f}"]
                   for n in ("euler", "rk4", "rkmk4")]
+    f16_rows = [[label, target, f"{m[key] / div:.4g} {unit}", "met" if m[key] <= limit else "missed"]
+                for key, label, limit, target, div, unit in metrics_mod.BENCH_TARGETS]
     figs = []
     for f in plots.FIGURES:
         div = f.build(out).to_html(full_html=False, include_plotlyjs=False, div_id=f"fig-{f.id}",
@@ -117,16 +119,22 @@ def build_html(out: Path, m: dict) -> str:
 <style>{CSS}</style><script>{plotly_js}</script></head>
 <body><main>
 <header class="text"><h1>flightsim validation report</h1>
+<p>A C++20 six-degree-of-freedom rigid-body and F-16 flight dynamics simulator, validated against closed-form solutions,
+published reference data and the JSBSim flight dynamics engine. This page is regenerated from source on every push.
+<a href="https://github.com/Eliot-2006/flightsim">Source code and README</a> ·
+<a href="https://github.com/Eliot-2006/flightsim/blob/main/docs/design.md">Design and decision log</a> ·
+<a href="https://github.com/Eliot-2006/flightsim/blob/main/docs/results.md">All results</a></p>
 <p>Rigid-body core: {m['orders.in_bounds']} of {m['orders.asserted']} asserted convergence orders are inside their bounds
 (first-order methods {m['orders.first.min']:.3f}–{m['orders.first.max']:.3f}, fourth-order {m['orders.fourth.min']:.3f}–{m['orders.fourth.max']:.3f}).
+Aircraft: JSBSim J3 worst difference {m['jsbsim.j3.worst']:.2f} % of peak (limit 2 %); autopilot C1 overshoot {m['control.c1.overshoot']:.2f} %, 2 % settling {m['control.c1.settling']:.1f} s.
 Every figure below is drawn from the output of the <code>flightsim</code> command line; no physics is computed in Python.</p>
 <p class="meta">flightsim {m['env.version']} · {html.escape(m['env.git_sha'])} · {html.escape(m['env.compiler'])} · {m['env.build_type']}</p>
-<nav aria-label="Figures"><ul>{toc}<li><a href="#h-bench">Benchmarks</a></li><li><a href="#h-aircraft">Aircraft</a></li></ul></nav></header>
+<nav aria-label="Figures"><ul>{toc}<li><a href="#h-bench">Benchmarks</a></li></ul></nav></header>
 {"".join(figs)}
 <section aria-labelledby="h-bench"><h2 id="h-bench">Benchmarks</h2>
-{_table(f"Release build, single thread, {m['bench.cpus']} logical CPUs. Targets are reported, not gated.", ["Integrator", "Rigid-body step [ns]", "R3 10 s run [µs]"], bench_rows)}</section>
-<section aria-labelledby="h-aircraft"><h2 id="h-aircraft">Aircraft</h2>
-<p class="text note">F-16 results (trim, linearization, JSBSim cross-validation, autopilot) are coming in M4–M7.</p></section>
+<p class="text note">{html.escape(m['host.cpu'])}, {html.escape(m['host.os'])}, {html.escape(m['host.compiler'])}, {m['host.build_type']}; median of {m['host.bench_repetitions']} repetitions. Full methodology in docs/results.md.</p>
+{_table("F-16 against the PRD §11 targets. Targets are reported, not gated.", ["Benchmark", "Target", "Measured", "Status"], f16_rows)}
+{_table("Integrator cost.", ["Integrator", "Rigid-body step [ns]", "R3 10 s run [µs]"], bench_rows)}</section>
 </main><script>{JS % (json.dumps(plots.LIGHT), json.dumps(DARK))}</script></body></html>"""
 
 

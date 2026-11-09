@@ -62,7 +62,8 @@ jobs:
       # Control design consumes the real CLI Jacobian; report tests also run benchmarks.
       - run: sudo apt-get update && sudo apt-get install -y ninja-build
       - run: cmake --preset release
-      - run: cmake --build --preset release --target flightsim bench_flightsim -j 2
+      # run.py also runs the tests whose printed numbers feed the report (A1, B1, ...), so the test binaries are built too.
+      - run: cmake --build --preset release --target flightsim bench_flightsim unit_tests validation_tests -j 2
       - run: cd python && uv sync --frozen && uv run pytest
 
   bench:
@@ -97,3 +98,46 @@ jobs:
       - run: cmake --build --preset release -j --target flightsim
       - uses: astral-sh/setup-uv@v5
       - run: cd python && uv sync --frozen && uv run python -m jsbsim_compare.compare --check
+
+  demo:
+    # Fresh-checkout reproducibility on Linux (PRD 13 M8): the one-command demo, no cache, no kaleido/Chrome.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: astral-sh/setup-uv@v5
+      - run: scripts/demo.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: |
+            out/index.html
+            out/metrics.json
+
+  coverage:
+    # PRD 10.5 (should): llvm-cov line coverage of src/, gated at 85 % on core/, math/ and analysis/ (96.4 % when measured
+    # with clang-18 in an ubuntu:24.04 container at M8; the whole of src/ is reported but not gated).
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build llvm-18 jq
+      - run: cmake -S . -B build/cov -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping"
+      - run: cmake --build build/cov -j --target unit_tests validation_tests alloc_tests
+      - run: mkdir -p build/cov/prof && LLVM_PROFILE_FILE=$PWD/build/cov/prof/%p-%m.profraw ctest --test-dir build/cov --output-on-failure
+      - run: llvm-profdata-18 merge -sparse build/cov/prof/*.profraw -o build/cov/all.profdata
+      - name: Report
+        run: |
+          OBJ="build/cov/unit_tests -object build/cov/validation_tests -object build/cov/alloc_tests"
+          llvm-cov-18 report $OBJ -instr-profile=build/cov/all.profdata src/flightsim | tee coverage.txt
+          echo "## Line coverage, core/ math/ analysis/" >> "$GITHUB_STEP_SUMMARY"
+          llvm-cov-18 export $OBJ -instr-profile=build/cov/all.profdata -summary-only src/flightsim/core src/flightsim/math src/flightsim/analysis \
+            | jq -r '.data[0].totals.lines.percent' | tee lines.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate (PRD 10.5 target, 85 % lines)
+        run: awk -v c="$(cat lines.txt)" 'BEGIN { print "line coverage " c " %"; exit !(c >= 85) }'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.txt

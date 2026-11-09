@@ -1,0 +1,50 @@
+Running main() from /Users/eliotboda/.paradev/worktrees/flightsim/m8-polish/build/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = F16Consistency.*:F16AutopilotB1.*:F16Trim.TR2Stationarity
+[==========] Running 8 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from F16AutopilotB1
+[ RUN      ] F16AutopilotB1.ClosedLoopWorkEnergyBalance60s
+B1 closed loop (C1, 60 s, dt=0.01): max|dE| = 3.0301e+06 J, max|dE - W_nc| = 0.00309739 J, ratio = 1.02221e-09
+[       OK ] F16AutopilotB1.ClosedLoopWorkEnergyBalance60s (21 ms)
+[----------] 1 test from F16AutopilotB1 (21 ms total)
+
+[----------] 1 test from F16Trim
+[ RUN      ] F16Trim.TR2Stationarity
+TR2 dV_fps=0 dalpha=1.80411e-16 dtheta=0 dh_ft=-8.40358e-13
+TR2 sea-level roundoff lookup: engine.military: x=-7.549516567e-19 outside [0,15240]
+[       OK ] F16Trim.TR2Stationarity (1 ms)
+[----------] 1 test from F16Trim (1 ms total)
+
+[----------] 6 tests from F16Consistency
+[ RUN      ] F16Consistency.B1WorkEnergy
+B1 dt=0.04 residual=1.54246510829e-08
+B1 dt=0.02 residual=9.6519593328e-10
+B1 dt=0.01 residual=6.0548708639e-11
+B1 observed_orders=3.99827220772,3.99465374089
+[       OK ] F16Consistency.B1WorkEnergy (8 ms)
+[ RUN      ] F16Consistency.B2AngularImpulse
+B2 dt=0.01 residual=2.60371006471e-10
+[       OK ] F16Consistency.B2AngularImpulse (4 ms)
+[ RUN      ] F16Consistency.S1MirrorSymmetrized
+S1 symmetrized_relative= 1.8645496763e-16 1.38777878078e-17 6.07153216592e-18 1.60461921528e-17 6.93889390391e-18 3.46944695195e-18 5.55111512313e-17 2.16840434497e-19 3.90312782095e-18                 0                 0                 0                 0
+[       OK ] F16Consistency.S1MirrorSymmetrized (2 ms)
+[ RUN      ] F16Consistency.S1ProductionAsymmetryReported
+S1 production_relative=4.92528310477e-05 8.32601000917e-05  3.9133228815e-05 0.000113325199304 0.000305874046537 2.84275309907e-05 0.000303133695499 0.000115983775955 8.26346191424e-05  7.7697092291e-06 7.51377127135e-05 2.31038585043e-05                 0 max=0.000305874046537
+[       OK ] F16Consistency.S1ProductionAsymmetryReported (2 ms)
+[ RUN      ] F16Consistency.W1GalileanInvariance
+W1 relative=5.09542881776e-16 5.89805981832e-17 8.35970696963e-17 3.00107161344e-16 2.22044604925e-16 1.07552855511e-16 4.15574692714e-16 2.25514051877e-17 1.83880688454e-16   0.0597992031962    0.666396638409                 0                 0 track_error_m=1.03767365314e-11
+[       OK ] F16Consistency.W1GalileanInvariance (5 ms)
+[ RUN      ] F16Consistency.AircraftConvergenceMeasured
+Aircraft dt=0.04 position_error_m=6.43822567527e-05 attitude_error_rad=8.45095731533e-08
+Aircraft dt=0.02 position_error_m=5.10315743087e-06 attitude_error_rad=6.81109615041e-09
+Aircraft dt=0.01 position_error_m=4.39490666397e-07 attitude_error_rad=6.93137421342e-10
+Aircraft dt=0.005 position_error_m=1.86420829741e-07 attitude_error_rad=2.78138112696e-10
+Aircraft dt=0.0025 position_error_m=1.55641942372e-07 attitude_error_rad=2.26073877361e-10
+Aircraft position_order=2.21593320702 reference_error_estimate=7.90590310539e-11 reference_dt=3.90625e-05 levels_used=0(dt=0.04) 1(dt=0.02) 2(dt=0.01) 3(dt=0.005) 4(dt=0.0025) 
+Aircraft attitude_order=2.17063669812 reference_error_estimate=5.22854950069e-14 reference_dt=3.90625e-05 levels_used=0(dt=0.04) 1(dt=0.02) 2(dt=0.01) 3(dt=0.005) 4(dt=0.0025) 
+[       OK ] F16Consistency.AircraftConvergenceMeasured (933 ms)
+[----------] 6 tests from F16Consistency (958 ms total)
+
+[----------] Global test environment tear-down
+[==========] 8 tests from 3 test suites ran. (981 ms total)
+[  PASSED  ] 8 tests.

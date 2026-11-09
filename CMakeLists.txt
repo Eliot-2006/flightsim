@@ -111,6 +111,7 @@ if(NOT FLIGHTSIM_SANITIZE)
   gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
 endif()
 
-add_executable(bench_flightsim bench/bench_integrators.cpp)
+add_executable(bench_flightsim bench/bench_integrators.cpp bench/bench_f16.cpp)
 target_link_libraries(bench_flightsim PRIVATE flightsim_core benchmark::benchmark)
 flightsim_target_options(bench_flightsim)
+target_compile_definitions(bench_flightsim PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

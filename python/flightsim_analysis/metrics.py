@@ -4,6 +4,8 @@ the arithmetic here is post-processing of CSV columns (ratios, maxima, counts), 
 import csv
 import json
 import math
+import re
+import tomllib
 from pathlib import Path
 
 INTEGRATORS = ("euler", "rk4", "symplectic_euler", "lie_euler", "rkmk4")
@@ -102,23 +104,58 @@ def build(out: Path) -> dict:
                     m[f"cons.R3.{r['integrator']}.{tag}.{k}"] = float(r[col])
                 m["cons.h"] = float(r["h"])
 
-    # --- benchmarks ---
+    # --- benchmarks: median over the repetitions (settings in run.py) ---
     bench = json.loads((out / "bench.json").read_text())
+    env = json.loads((out / "env.json").read_text())
     ctx = bench["context"]
     m["bench.r3run.h"] = 0.01  # step used by BM_R3Run10s in bench/bench_integrators.cpp
-    m["bench.cpus"], m["bench.mhz"] = ctx["num_cpus"], ctx["mhz_per_cpu"]
+    m["bench.cpus"] = ctx["num_cpus"]
+    m.update({f"host.{k}": v for k, v in env.items()})
+    m["bench.library"], m["bench.library_build"] = ctx["library_version"], ctx["library_build_type"]
+    cv = []
     for b in bench["benchmarks"]:
-        kind, integ = b["name"].split("/")[0], b["label"]
         unit = {"ns": 1.0, "us": 1e3, "ms": 1e6}[b["time_unit"]]
-        ns = b["cpu_time"] * unit
+        if b["aggregate_name"] == "cv":
+            cv.append(b["cpu_time"])  # coefficient of variation as a fraction, not a time
+        if b["aggregate_name"] != "median":
+            continue
+        kind, ns = b["run_name"].split("/")[0], b["cpu_time"] * unit
         if kind == "BM_Step":
-            m[f"bench.step.{integ}.ns"] = ns
+            m[f"bench.step.{b['label']}.ns"] = ns
+        elif kind == "BM_R3Run10s":
+            m[f"bench.r3run.{b['label']}.us"] = ns / 1e3
         else:
-            m[f"bench.r3run.{integ}.us"] = ns / 1e3
+            m[f"bench.f16.{kind}.ns"] = ns
+    m["bench.cv_max_pct"] = 100 * max(cv)
+    m.update(bench_f16_table(m))
     m.update(aircraft(out))
+    m.update(checks(out))
     m.update(jsbsim(out))
+    m.update(stock_f16(out))
     m.update(control(out))
     return m
+
+
+# PRD 11 targets (expectations, not gates): key -> (label, target in ns, target text, divisor to the displayed unit, unit)
+BENCH_TARGETS = (
+    ("bench.step.rk4.ns", "Rigid-body RK4 step (gravity + quadratic drag)", 200, "≤ 200 ns", 1, "ns"),
+    ("bench.f16.BM_F16Deriv.ns", "F-16 derivative evaluation", 400, "≤ 400 ns", 1, "ns"),
+    ("bench.f16.BM_F16Rk4Step.ns", "F-16 RK4 step", 2e3, "≤ 2 µs", 1e3, "µs"),
+    ("bench.f16.BM_F16ClosedLoop60s.ns", "60 s closed-loop F-16 run (C1), dt = 0.01 s, output disabled", 50e6, "≤ 50 ms", 1e6, "ms"),
+    ("bench.f16.BM_F16Trim.ns", "Trim solve", 10e6, "≤ 10 ms", 1e3, "µs"),
+    ("bench.f16.BM_F16Linearize.ns", "Linearization (13×13 + 13×4)", 5e6, "≤ 5 ms", 1e3, "µs"),
+)
+
+
+def bench_f16_table(m: dict) -> dict:
+    """PRD 11 table: target beside the measurement; a miss is stated, not hidden."""
+    rows = []
+    for key, label, limit_ns, target, div, unit in BENCH_TARGETS:
+        ns = m[key]
+        rows.append(f"| {label} | {target} | {ns / div:.4g} {unit} | {'met' if ns <= limit_ns else '**missed**'} |")
+    closed_ns = m["bench.f16.BM_F16ClosedLoop60s.ns"]
+    return {"bench.f16.table": "\n".join(rows), "bench.f16.realtime_factor": 60.0 / (closed_ns * 1e-9),
+            "bench.f16.misses": sum(m[k] > lim for k, _, lim, *_ in BENCH_TARGETS)}
 
 
 # ---------------------------------------------------------------------------------------------- control (M7)
@@ -243,7 +280,7 @@ def aircraft(out: Path) -> dict:
 
     refs = tomllib.loads((Path(__file__).resolve().parents[2] / "data/f16/reference_values.toml").read_text())
     m = {}
-    rows = []
+    rows, trim_rel, mode_rel = [], [], []
     for case in ("level_35", "level_30", "level_38"):
         result = json.loads((out / "aircraft" / f"trim_{case}.json").read_text())["trim"]
         for field, name, unit in (("alpha_rad", "alpha", "rad"), ("throttle", "throttle", "1"),
@@ -251,9 +288,11 @@ def aircraft(out: Path) -> dict:
             ours, published = result[field], refs["TR1"][case][name]["value"]
             difference = ours - published
             m[f"trim.{case}.{name}.difference"] = difference
+            trim_rel.append(abs(difference / published))
             rows.append(f"| {case} | {name} [{unit}] | {ours:.10g} | {published:.10g} | {difference:.6g} | "
                         f"{abs(difference / published):.3%} |")
     m["trim.table"] = "\n".join(rows)
+    m["trim.max_rel_pct"] = 100 * max(trim_rel)
     linear = json.loads((out / "aircraft" / "linear_level_30.json").read_text())
     rows = []
     for mode in linear["modes"]:
@@ -264,10 +303,12 @@ def aircraft(out: Path) -> dict:
         real, imag = mode["real"], mode["imag"]
         delta = complex(real - p[0], imag - p[1])
         rel = abs(delta) / abs(complex(*p))
+        mode_rel.append(rel)
         rows.append(f"| {mode['name']} | {real:.9g} + {imag:.9g}i | {p[0]} + {p[1]}i | "
                     f"{delta.real:.5g} + {delta.imag:.5g}i | {rel:.3%} | {mode['wn']:.6g} | "
                     f"{mode['zeta']:.6g} | {mode['tau']:.6g} |")
     m["linear.modes.table"] = "\n".join(rows)
+    m["linear.modes.max_rel_pct"] = 100 * max(mode_rel)
     rows = []
     for source in ("lateral_textbook", "longitudinal_tutorial"):
         reference = refs["LN1"]["level_30"][source]
@@ -398,3 +439,79 @@ def jsbsim(out: Path) -> dict:
     m["jsbsim.curv.table"] = "\n".join(rows)
     m["jsbsim.sampling.mismatch"] = max(v["time_mismatch_s"] for v in c["budget"]["sampling_alignment"].values())
     return m
+
+
+# ---------------------------------------------------------------------------------------------- J4 (stock JSBSim f16)
+SL_DATA = Path(__file__).resolve().parents[2] / "data" / "f16" / "f16_sl.toml"
+
+
+def stock_f16(out: Path) -> dict:
+    """Flatten out/jsbsim/stock_f16.json (jsbsim_compare.stock_f16) into report keys. Pure formatting."""
+    rows = json.loads((out / "jsbsim" / "stock_f16.json").read_text())
+    data = tomllib.loads(SL_DATA.read_text())
+    military = data["engine"]["throttle_gearing"]["breakpoint"]  # S&L throttle at military power (P = 50 %)
+    m: dict = {"j4.military_throttle": military}
+    table = []
+    for r in rows:
+        s, o, full = r["stock"], r["ours"], r["stock_full"]
+        lever = (full["throttle_pos_norm"], o["throttle"] / military)
+        quantities = (("α [deg]", o["alpha_deg"], s["alpha_deg"], ".3f"), ("δe [deg]", o["elevator_deg"], s["elevator_deg"], ".3f"),
+                      ("throttle command", o["throttle"], s["throttle"], ".4f"),
+                      ("power lever, fraction of military", lever[1], lever[0], ".3f"),
+                      ("thrust [lbf]", o["thrust_lbf"], s["thrust_lbf"], ".0f"))
+        for name, ours, stock, f in quantities:
+            table.append(f"| {r['h_ft']} | {name} | {ours:{f}} | {stock:{f}} | {stock - ours:+{f}} | {100 * (stock - ours) / abs(ours):+.1f} % |")
+    m["j4.table"] = "\n".join(table)
+    for r in rows:
+        h, s, o = r["h_ft"], r["stock"], r["ours"]
+        m[f"j4.h{h}.alpha_diff_deg"], m[f"j4.h{h}.elevator_diff_deg"] = s["alpha_deg"] - o["alpha_deg"], s["elevator_deg"] - o["elevator_deg"]
+        m[f"j4.h{h}.thrust_diff_pct"] = 100 * (s["thrust_lbf"] - o["thrust_lbf"]) / o["thrust_lbf"]
+    f = rows[0]["stock_full"]
+    m["j4.weight_lbf"], m["j4.fuel_lbf"], m["j4.mach"] = f["weight_lbf"], f["fuel_lbf"], rows[0]["stock_full"]["mach"]
+    m["j4.cg_offset_cbar"] = (f["cg_x_in"] - f["aerorp_x_in"]) / (f["cbar_ft"] * 12)
+    m["j4.weight_ratio"] = f["weight_lbf"] / data["mass_geometry"]["W"]["value"]
+    m["j4.jsbsim_version"], m["j4.gravity_model"] = f["jsbsim_version"], int(f["gravity_model"])
+    m["j4.max_resid"] = max(max(abs(x["stock_full"][k]) for k in ("udot_fps2", "wdot_fps2")) for x in rows)
+    m["j4.max_qdot"] = max(abs(x["stock_full"]["qdot_rps2"]) for x in rows)
+    return m
+
+
+# ---------------------------------------------------------------------------------------------- printed test numbers
+def _floats(text: str) -> list[float]:
+    return [float(x) for x in text.split()]
+
+
+def checks(out: Path) -> dict:
+    """Numbers the validation tests print (out/checks/*.txt, written by run.py): A1, B1, B2, S1, W1, TR2, aircraft
+    convergence order, closed-loop B1. The tests assert the bounds; this only reads the values they print."""
+    val = (out / "checks" / "validation.txt").read_text()
+    unit = (out / "checks" / "unit.txt").read_text()
+
+    def one(text: str, pattern: str) -> re.Match:
+        found = re.search(pattern, text, re.MULTILINE)
+        if not found:
+            raise ValueError(f"check output has no line matching {pattern!r}")
+        return found
+
+    a1 = {n: float(e) for n, e in re.findall(r"^A1 (\w+_dot) actual=\S+ expected=\S+ relative_error=(\S+)", unit, re.MULTILINE)}
+    if len(a1) != 16:
+        raise ValueError(f"A1 prints {len(a1)} components, expected 16")
+    rounded = ("p_dot", "r_dot")  # S&L printed their rotational equations with rounded inertia coefficients (docs/design.md)
+    w1 = _floats(one(val, r"^W1 relative=(.*) track_error_m=").group(1))
+    c = {
+        "a1.max_rel": max(a1.values()),
+        "a1.max_rel_excluding_rotational": max(v for k, v in a1.items() if k not in rounded),
+        "a1.max_rel_rotational": max(a1[k] for k in rounded),
+        "b1.residual": float(one(val, r"^B1 dt=0.01 residual=(\S+)").group(1)),
+        "b1.order": float(one(val, r"^B1 observed_orders=\S+,(\S+)").group(1)),
+        "b2.residual": float(one(val, r"^B2 dt=0.01 residual=(\S+)").group(1)),
+        "s1.symmetrized": max(_floats(one(val, r"^S1 symmetrized_relative=(.*)$").group(1))),
+        "s1.production": float(one(val, r"^S1 production_relative=.* max=(\S+)").group(1)),
+        "w1.air_relative": max(w1[:9]),
+        "w1.track_m": float(one(val, r"track_error_m=(\S+)").group(1)),
+        "aircraft.position_order": float(one(val, r"^Aircraft position_order=(\S+)").group(1)),
+        "aircraft.attitude_order": float(one(val, r"^Aircraft attitude_order=(\S+)").group(1)),
+        "b1_closed_loop.ratio": float(one(val, r"^B1 closed loop .* ratio = (\S+)").group(1)),
+        "tr2.dh_ft": abs(float(one(val, r"^TR2 dV_fps=\S+ dalpha=\S+ dtheta=\S+ dh_ft=(\S+)").group(1))),
+    }
+    return {f"checks.{k}": v for k, v in c.items()}
