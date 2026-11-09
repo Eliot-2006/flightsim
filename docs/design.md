@@ -105,6 +105,36 @@ amplitude along the normalized NED direction at the midpoint; endpoints are zero
 This is a frozen time profile: spatial gradients and rotational gusts are neglected
 (PRD §5.4). Event alignment belongs to the scenario caller.
 
+### M4 F-16 dynamics and chart
+
+`F16Model` assembles the S&L forces and moments using the SI-converted loader
+tables. Static Cl/Cn use odd folding in beta; effectiveness tables use signed beta.
+CG transfer uses total Cy/Cz after damping. The control divisors are 20°/30°,
+independent of the actuator position limits. Mass is the reciprocal of S&L RM;
+the FRD inertia tensor has off-diagonal -Ixz and engine momentum along positive
+body x. The generic rigid-body EOM owns the gyroscopic term.
+
+`flight_vars` maps between NED ground velocity and the air-relative S&L chart.
+For steady wind, body air acceleration is `C_BN * vdot_N - omega.cross(v_air_B)`;
+the chart derivatives use that acceleration, including in nonzero constant wind.
+Below 1e-9 m/s the existing air-data convention defines alpha/beta as zero and
+the model suppresses nondimensional damping rates. At rest, aerodynamic force
+vanishes and the NED state can accelerate under thrust/gravity. The singular
+V/alpha/beta chart derivatives are defined as zero there; use the 17-state model
+to depart from rest. Euler pitch and sideslip chart poles throw `domain_error`.
+
+Throttle is clamped to its data-file limits. With actuators enabled, actual
+surface states determine the force and lag/rate-limited derivatives drive them
+toward position-limited commands. With actuators bypassed, commands determine
+force directly and surface-state derivatives are zero. `Eval.surfaces` reports
+effective throttle followed by elevator, aileron and rudder (radians).
+
+A1 is a secondary, single-lineage check (Archimedes). The full inertia gives
+small differences from the published rounded c1…c9 rotational equations; the
+test reproduces those rounded equations diagnostically without changing the
+production EOM. Measured errors and the Task 4.6 fixture blocker are recorded
+in `docs/results.md`.
+
 From PRD §1.2 (engineering calls made with the specification):
 
 | Call | Rationale |
