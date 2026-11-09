@@ -1,6 +1,6 @@
 # Design
 
-Companion to `docs/PRD.md` (the specification) and `docs/results.md` (generated numbers). This file explains how the code is organised, why it is built that way, and the mathematics behind the less obvious parts. Aircraft sections are marked *coming in M4–M7*; nothing here claims aircraft results.
+Companion to `docs/PRD.md` (the specification) and `docs/results.md` (generated numbers). This file explains how the code is organised, why it is built that way, and the mathematics behind the less obvious parts. The F-16 model and validation are implemented; trim, aircraft linearization, JSBSim comparison and autopilot follow in M5–M7.
 
 ## 1. Architecture
 
@@ -10,11 +10,11 @@ One static library, `flightsim_core`, with folders as modules; a thin CLI; three
 |---|---|
 | `math/` | units, Hamilton quaternion, frames and Euler angles, Jacobi elliptic functions, interpolation tables |
 | `core/` | rigid-body state layout, equations of motion, force models, integrators |
-| `env/` | atmosphere models (aircraft use) |
-| `aircraft/` | F-16 data loader (model itself: *coming in M4–M7*) |
+| `env/` | atmosphere models, gravity, constant wind and discrete gust |
+| `aircraft/` | F-16 data loader and nonlinear aero/engine/actuator model |
 | `validation/` | analytic references (T0–T5, R1–R5), convergence harness |
 | `sim/` | TOML scenario loader, runner, CSV/JSON output |
-| `analysis/` | generic central-difference Jacobian |
+| `analysis/` | generic central-difference Jacobian, air-relative flight-variable chart |
 
 Design choices, each of which keeps the dynamics testable in isolation:
 
@@ -45,7 +45,10 @@ Design choices, each of which keeps the dynamics testable in isolation:
 | Scenario `dt` divides run, output interval | `Scenario.RejectsDtNotDividingTFinal` |
 | Non-finite state stops the run | `Runner.NonFiniteStops` |
 
-Not yet testable (*coming in M4–M7*): the 17-state aircraft layout, air-relative velocity with wind, control-surface sign table.
+The aircraft layout and wind-relative chart are pinned by `FlightVars.RoundTripX13`
+and `F16Consistency.W1GalileanInvariance`; the S&L control signs are pinned by
+`F16Model.PositiveElevatorNoseDown`, `PositiveAileronLeftRoll` and
+`PositiveRudderLeftYaw`.
 
 ## 3. Derivations
 
@@ -97,6 +100,43 @@ Implemented in `validation/convergence.*`; normative text in PRD §6.3.
 
 ## 4. Decision log
 
+### M4 wind profile
+
+`WindModel` adds a constant NED wind and an optional MIL-F-8785C 1-cos discrete
+gust, applied as a full rise and fall over its duration. The peak is the specified
+amplitude along the normalized NED direction at the midpoint; endpoints are zero.
+This is a frozen time profile: spatial gradients and rotational gusts are neglected
+(PRD §5.4). Event alignment belongs to the scenario caller.
+
+### M4 F-16 dynamics and chart
+
+`F16Model` assembles the S&L forces and moments using the SI-converted loader
+tables. Static Cl/Cn use odd folding in beta; effectiveness tables use signed beta.
+CG transfer uses total Cy/Cz after damping. The control divisors are 20°/30°,
+independent of the actuator position limits. Mass is the reciprocal of S&L RM;
+the FRD inertia tensor has off-diagonal -Ixz and engine momentum along positive
+body x. The generic rigid-body EOM owns the gyroscopic term.
+
+`flight_vars` maps between NED ground velocity and the air-relative S&L chart.
+For steady wind, body air acceleration is `C_BN * vdot_N - omega.cross(v_air_B)`;
+the chart derivatives use that acceleration, including in nonzero constant wind.
+Below 1e-9 m/s the existing air-data convention defines alpha/beta as zero and
+the model suppresses nondimensional damping rates. At rest, aerodynamic force
+vanishes and the NED state can accelerate under thrust/gravity. The singular
+V/alpha/beta chart derivatives are defined as zero there; use the 17-state model
+to depart from rest. Euler pitch and sideslip chart poles throw `domain_error`.
+
+Throttle is clamped to its data-file limits. With actuators enabled, actual
+surface states determine the force and lag/rate-limited derivatives drive them
+toward position-limited commands. With actuators bypassed, commands determine
+force directly and surface-state derivatives are zero. `Eval.surfaces` reports
+effective throttle followed by elevator, aileron and rudder (radians).
+
+A1 is a secondary, single-lineage check (Archimedes). The full inertia gives
+small differences from the published rounded c1…c9 rotational equations; the
+test reproduces those rounded equations diagnostically without changing the
+production EOM. The investigation is recorded under Validation findings below.
+
 From PRD §1.2 (engineering calls made with the specification):
 
 | Call | Rationale |
@@ -128,11 +168,51 @@ From `PROGRESS.md` and M2/M3 work:
 
 ## 5. Known limitations
 
-- Rigid body only: the F-16 model, trim, linearization, JSBSim comparison and autopilot are *coming in M4–M7*.
+- Aircraft trim, linearization, JSBSim comparison and autopilot are *coming in M5–M7*.
 - Flat non-rotating Earth, constant mass and inertia, uniform gravity unless a model parameter says otherwise.
 - Fixed-step integration only; no adaptive stepping or dense output.
 - Symplectic Euler is exercised on translational oscillators only (§3.4); on rotation it is plain Euler.
 - RKMK4 and Lie–Euler cover attitude only; other states use RK4 and Euler respectively.
-- Observed orders are measured on eight step levels with reference-accuracy checks; cases without a closed-form attitude (R3 attitude, R4) rely on the fine RK4 reference.
+- Smooth-case observed orders use eight step levels with reference-accuracy checks; cases without a closed-form attitude (R3 attitude, R4) rely on the fine RK4 reference. The non-smooth aircraft study uses the amended five-level procedure below.
 - Zero-allocation is asserted for the RK4 loop with a quadratic-drag force model; other integrators and force combinations are not separately tested.
 - Benchmark numbers in `docs/results.md` are for one machine and one compiler (recorded there); they are reported, not gated.
+
+## Validation findings
+
+### A1: rounded rotational inertia coefficients
+
+A1 uses the S&L Table 3.5-2 values reproduced by Archimedes, a **single
+reference lineage** (see `data/f16/reference_values.toml` for citations).
+`F16Model.A1CheckCase` computes in SI, converts back to feet/percent for
+comparison, and prints every component's relative error. All components retain
+the binding 1e-3 relative tolerance.
+
+The two errors above the 1e-4 investigation threshold are pdot
+(1.99905157675e-4) and rdot (1.03599879618e-4). Production derives rotational
+coupling from the full inertia tensor, with off-diagonal -Ixz. The printed
+reference instead uses the rounded S&L c1…c9 combinations. Evaluating those
+rounded coefficients diagnostically yields
+`[12.6267851355, 0.964966917861, 0.580975825351] rad/s²`, matching the printed
+`[12.62679, 0.9649671, 0.5809759]` to within 4e-7 relative. The test checks this
+explanation and exempts only pdot/rdot from the investigation failure, retaining
+the 1e-3 bound for both. It does not alter production inertia or the generic EOM.
+The calculation uses rtod=57.29578, the distinct 57.3 Cz constant, mass=1/RM,
+g=32.17 ft/s², SlAdc and the negative-beta odd fold.
+
+### Aircraft budget and convergence amendments
+
+The prescribed open-loop doublets excite an unstable longitudinal mode
+(+0.13257/s near the initial point), leaving the alpha table domain at 25.46 s.
+The orchestrator amended B1, B2 and the aircraft convergence run to **20 s**,
+with the doublets and domain assertions unchanged. B1/B2 retain their 1e-6
+relative residual bound at dt=0.01. A 60 s closed-loop budget check belongs to M7.
+
+For the non-smooth aircraft convergence study, the amended reference is RK4 at
+`h_min/64`, with error estimated from its difference against `h_min/32`. Each
+metric's fit excludes levels with error below 10 times that reference-error
+estimate; the test prints the estimate and the actual fitted levels. It fits
+the least-squares log-error/log-step slope over all reference-resolved levels
+and retains the [0.9, 4.2] order bounds. Piecewise-linear tables reduce smoothness
+at cell crossings, so aircraft order is measured rather than assumed to be four.
+The smooth-case harness, its asymptotic-window selection and its 1e-3
+reference-accuracy rule are unchanged.
