@@ -386,10 +386,55 @@ Common run: x0 at h = 3048 m (10,000 ft), V = 152.4 m/s (500 ft/s), α = 0.0594 
 ## Milestone M5 — (original sketch, superseded by Tasks 5.1–5.3) Interfaces: `analysis/trim.{hpp,cpp}`: `struct TrimSpec { double V, h, gamma, xcg; }; struct TrimResult { bool ok; double alpha, throttle, de; Vec<17> x; F16Input u; int iterations; double residual; std::string message; }; TrimResult trim_level(const F16Model&, const TrimSpec&);` `analysis/linearize.{hpp,cpp}`: `struct LinearModel { Eigen::Matrix<double,13,13> A; Eigen::Matrix<double,13,4> B; Vec<13> x0; Vec<4> u0; }; LinearModel linearize(const F16Model&, const TrimResult&, double eps = 6e-6);` `analysis/modes.{hpp,cpp}` mode identification. CLI `trim`, `linearize` (JSON). Tests TR1, TR2, LN1, LN2 (breakpoint monitor asserts no crossing), LN3. **Accept:** PRD §13 M5.
 
 ## Milestone M6 — JSBSim matched cross-validation
-Detailed after 4.0 findings + M5. Files: `python/jsbsim_compare/{gen_xml.py,run_jsbsim.py,compare.py}`, `reference/jsbsim/...`, `tests` J1–J3 in pytest (python) consuming CLI outputs; discrepancy budget in results. **Accept:** PRD §13 M6.
+
+### Task 6.1: Open-loop aircraft runner + CLI
+**Files:** Create `src/flightsim/sim/aircraft_runner.hpp/.cpp`; Modify `src/flightsim/sim/aircraft_scenario.*`, `src/flightsim/sim/output.*`, `apps/flightsim.cpp`; Test `tests/unit/test_aircraft_runner.cpp`.
+- `flightsim run` dispatches on the presence of an `[aircraft]` table. The aircraft scenario adds: `[initial] from_trim = true` (uses `[trim]`) or explicit x13; `[[inputs]] channel = "throttle"|"de"|"da"|"dr", t_start_s, t_end_s, value (deg for surfaces), mode = "add"` (added to trim, held constant within steps; event times must be multiples of dt → load error otherwise); `[wind]` constant/gust (Task 4.4); `[sim] integrator, dt_s, t_final_s, output_every, stop_at_ground = true`.
+- `struct AircraftRunOutput { std::vector<double> t; std::vector<Vec<17>> x; std::vector<F16Input> u; StopReason reason; bool out_of_domain; std::string first_violation; }`; CSV columns: t_s, x17 (SI), x13-derived (V_mps, alpha_rad, beta_rad, phi/theta/psi_rad, h_m), mach, qbar_Pa, thrust_N, throttle, de_rad, da_rad, dr_rad, plus the same in S&L units with `_ft`, `_fps`, `_deg` suffixes for comparison convenience.
+- `struct ControllerHook` is NOT added here (M7 adds controller scheduling); keep the loop structure so M7 inserts a fixed-rate controller call before each step.
+- [ ] Tests: `RejectsUnalignedInputEvent`, `DoubletAppliedOnSchedule`, `FromTrimStaysTrimmedWithNoInputs` (2 s, |ΔV| < 1e-6 m/s), `OutOfDomainReported`, `DeterministicBitwise`.
+
+### Task 6.2: JSBSim model generation and runs
+**Files:** Create `python/jsbsim_compare/{__init__.py, gen_xml.py, run_jsbsim.py, compare.py}`, `reference/jsbsim/{aircraft/f16_sl/f16_sl.xml, engine/dummy.xml, planet/flat_nonrot.xml}` (generated, committed), `scenarios/jsbsim/*.toml`, `python/tests/test_gen_xml.py`. Reuse knowledge from `spikes/jsbsim/` (FINDINGS.md, toy.xml) — re-implement in product code, don't import the spike.
+- `gen_xml.py` reads `data/f16/f16_sl.toml` only. Body-axis X/Y/Z force and ROLL/PITCH/YAW moment functions reproducing §5.3 exactly (tables in deg breakpoints with `aero/alpha-deg`, `aero/beta-deg`; |β| fold via abs/sign functions; damping via `aero/bi2vel`, `aero/ci2vel`; aileron/rudder normalization; Cz's β² term with the 57.3 constant). CG transfer by geometry (AERORP at x_cg_ref·c̄, CG at x_cg·c̄, structural frame x aft, inches), NOT by the S&L formula. `<mass_balance negated_crossproduct_inertia="false">`; `emptywt` chosen so `inertia/mass-slugs` = 1/0.00157 (assert after load). Thrust: external body-x force at the CG = power-level interpolation of idle/mil/max tables at (altitude, Mach) with power P from a property set by the runner (constant at trim power; engine lag excluded per PRD §8.6). Dummy zero-power engine for FGTrim throttle; pitch trim → elevator pass-through with a known linear map; surfaces drivable directly. Rotor h_x = 0 on both sides for comparisons.
+- Planet: spherical, `rotation_rate = 0`, radius R and GM such that g(0) = 9.80665 m/s²; `simulation/gravity-model = 0`; our side runs `gravity = {g0 = 9.80665, R = <same>}`, `atmosphere = "us76"`, `rotor = false`, `xcg = 0.35`.
+- `run_jsbsim.py`: loads planet BEFORE model; sets integrators explicitly (rate: AB3 for rotational and translational; position: Trapezoidal / AB3 — record in metadata); dt = 1/2400 and 1/4800; writes CSV with the same column names as our `_fps/_deg` columns.
+- [ ] `test_gen_xml.py`: every table value in the XML equals the TOML value (parse XML); mass/inertia properties after `load_model` equal the TOML values to 1e-9 rel; table-edge note: comparison scenarios assert in-domain.
+
+### Task 6.3: Comparisons J1–J3 + discrepancy budget
+**Files:** `python/jsbsim_compare/compare.py`, `python/tests/test_jsbsim_compare.py`, `reference/jsbsim/results/*.csv` (committed JSBSim outputs), report additions (`metrics.py`, `plots.py`, `docs/results.template.md`), CI job `jsbsim` in `.github/workflows/ci.yml`.
+- J1: JSBSim initialized at our us76 trim state (V = 502 ft/s, h = 10,000 ft and h = 0 ft) → report `accelerations/udot-ft_sec2`, `wdot`, `qdot-rad_sec2` after `run_ic()`; criteria PRD §8.6 (initial targets; exceedance blocks until root-caused — do not loosen).
+- J2: JSBSim's own trim vs ours: α, δe, throttle within 0.1 % or explained.
+- J3: elevator doublet (±1°, 1–2 s / 2–3 s), aileron pulse (2°, 1–2 s), rudder doublet (±2°) from each simulator's own trim, 20 s, compare deviations from trim for ΔV, Δα, Δq, Δθ, Δh, Δβ, Δp, Δr, Δφ sampled at common times; metric = max |Δ_ours − Δ_jsb| / max|Δ_jsb| per signal; target ≤ 2 %.
+- Discrepancy budget table: for each source (JSBSim dt halving; our dt halving; gravity model on/off in ours; atmosphere: ρ, a, T differences at trim altitude between our us76 and JSBSim's `atmosphere/*` properties; Earth curvature analytic estimate over the run; residual trim mismatch from J1; sampling alignment) quantify its effect on J3 metrics. Remaining unexplained difference stated plainly.
+- CI job `jsbsim`: release build + `uv run python -m jsbsim_compare.compare --check` (regenerates XML, reruns both sides, asserts J1–J3 criteria and that regenerated JSBSim CSVs match committed ones within 1e-9 rel).
+**Accept (M6):** PRD §13 M6.
 
 ## Milestone M7 — Actuators and autopilot
-Detailed after M5. Interfaces: `control/pid.{hpp,cpp}`: `struct PidGains { double kp, ki, kd, tf, tt, umin, umax; }; class Pid { double update(double setpoint, double measurement, double dt); void reset(); bool antiwindup = true; }` (stateful by necessity — controllers are the one stateful component, outside derivative functions). `control/autopilot.{hpp,cpp}` cascade per §7.3; aircraft runner with controller scheduling (`sim/aircraft_runner.{hpp,cpp}`); `python/control_design/design.py` (margins C5). Scenarios C1–C4. **Accept:** PRD §13 M7.
+
+### Task 7.1: PID
+**Files:** `src/flightsim/control/pid.hpp/.cpp`, `tests/unit/test_pid.cpp`.
+`struct PidGains { double kp, ki, kd, tf /*derivative filter time constant, s*/, tt /*back-calculation tracking time, s*/, umin, umax; }; class Pid { public: explicit Pid(PidGains); double update(double setpoint, double measurement, double dt); void reset(double u0 = 0); bool antiwindup = true; };` Discrete form: P on error, D on measurement through first-order filter (Tustin or backward Euler — document), I with back-calculation `İ = ki·e + (u_sat − u)/tt`, output saturated. `reset(u0)` initializes the integrator so the first output equals u0 (bumpless engage from trim).
+- [ ] Tests: `ProportionalOnly`, `IntegralRamp`, `DerivativeOnMeasurementNoKick` (setpoint step → no D spike), `SaturationClamps`, `BackCalculationLimitsWindup` (sustained saturation: integrator bounded vs unbounded with antiwindup=false), `BumplessReset`.
+
+### Task 7.2: Autopilot + closed-loop runner
+**Files:** `src/flightsim/control/autopilot.hpp/.cpp`; Modify `src/flightsim/sim/aircraft_runner.*`, `aircraft_scenario.*`; `scenarios/f16_ap_*.toml`; Test `tests/unit/test_autopilot.cpp`, `tests/validation/test_f16_autopilot.cpp`.
+- Cascade per PRD §7.3: `h_cmd → PI → θ_cmd (±15°) → P → q_cmd → PI → δe_cmd`; `V_cmd → PI → throttle ∈ [0,1]`. Controller at fixed rate (default 50 Hz; `dt` must divide it — load error otherwise), sampled measurements (no noise), outputs held between samples; actuators enabled (lag/rate/position per data) and engine lag on. Engaged from trim with bumpless reset.
+- Scenario `[autopilot] rate_hz, gains = "scenarios/autopilot_gains.toml", antiwindup = true`, `[[commands]] kind = "altitude"|"airspeed", t_s, value (+ units suffix)`, `[wind]`.
+- Metrics computed in C++ (`control/metrics.hpp`: overshoot %, 2 % settling time, steady-state error over last 10 s, peak actuator rate/position) and written into metadata.json.
+- [ ] Validation tests C1–C4 assert PRD §8.7 targets from the committed gains; C2 runs with and without anti-windup and asserts the anti-windup run has smaller overshoot.
+
+### Task 7.3: Linear design + margins (Python)
+**Files:** `python/control_design/{__init__.py, design.py}`, `python/tests/test_design.py`, `scenarios/autopilot_gains.toml` (generated, committed).
+- From `flightsim linearize` JSON at the C-scenario trim: longitudinal model + first-order actuator lag + ZOH/Padé delay for the controller rate; design inner-to-outer loops (pitch-rate, pitch, altitude; airspeed) with python-control; report each loop's gain and phase margins broken one loop at a time (C5: GM ≥ 6 dB, PM ≥ 45°); write gains TOML; produce linear-predicted step responses for C1/C3 to overlay on the nonlinear runs.
+- [ ] `test_design.py`: margins ≥ C5 for the committed gains; the committed gains file equals what `design.py` produces (reproducibility).
+
+### Task 7.4: Report
+Figures: C1–C3 responses with linear prediction overlay, C2 windup vs anti-windup, C4 gust/headwind rejection, actuator usage; results.md control table (targets vs measured).
+
+**Accept (M7):** PRD §13 M7.
+
+### (original M7 sketch, superseded) Interfaces: `control/pid.{hpp,cpp}`: `struct PidGains { double kp, ki, kd, tf, tt, umin, umax; }; class Pid { double update(double setpoint, double measurement, double dt); void reset(); bool antiwindup = true; }` (stateful by necessity — controllers are the one stateful component, outside derivative functions). `control/autopilot.{hpp,cpp}` cascade per §7.3; aircraft runner with controller scheduling (`sim/aircraft_runner.{hpp,cpp}`); `python/control_design/design.py` (margins C5). Scenarios C1–C4. **Accept:** PRD §13 M7.
 
 ## Milestone M8 — Stock JSBSim appendix + polish
 J4 appendix, final results regeneration, README, decision log, limitations. **Accept:** PRD §13 M8.
