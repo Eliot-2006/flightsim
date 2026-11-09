@@ -13,6 +13,7 @@
 #include "flightsim/analysis/linearize.hpp"
 #include "flightsim/analysis/modes.hpp"
 #include "flightsim/math/units.hpp"
+#include "flightsim/sim/aircraft_runner.hpp"
 #include "flightsim/sim/aircraft_scenario.hpp"
 #include "flightsim/sim/output.hpp"
 #include "flightsim/sim/runner.hpp"
@@ -35,6 +36,22 @@ int usage() {
 // non-finite.
 int cmd_run(const std::string& scenario_path, const std::filesystem::path& out_dir) {
   namespace sim = flightsim::sim;
+  if (toml::parse_file(scenario_path).contains("aircraft")) {  // aircraft scenarios dispatch on [aircraft]
+    const auto ac = sim::load_aircraft_scenario(scenario_path);
+    const auto out = sim::run_aircraft(ac);
+    std::filesystem::create_directories(out_dir);
+    sim::write_aircraft_csv(out_dir / "trajectory.csv", ac, out);
+    sim::write_aircraft_metadata(out_dir / "metadata.json", ac, out);
+    std::cout << "wrote " << (out_dir / "trajectory.csv").string() << " and "
+              << (out_dir / "metadata.json").string() << " (" << out.t.size()
+              << " samples, stop: " << sim::to_string(out.reason) << " at t=" << out.t_stop
+              << " s, out_of_domain: " << std::boolalpha << out.out_of_domain << ")\n";
+    if (out.reason == sim::StopReason::NonFinite) {
+      std::cerr << "error: " << out.message << '\n';
+      return 1;
+    }
+    return 0;
+  }
   const sim::RigidBodyScenario scenario = sim::load_rigid_body_scenario(scenario_path);
   const sim::RunOutput out = sim::run(scenario);
   std::filesystem::create_directories(out_dir);

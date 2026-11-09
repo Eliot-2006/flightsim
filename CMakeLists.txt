@@ -32,6 +32,7 @@ add_library(flightsim_core STATIC
   src/flightsim/analysis/modes.cpp
   src/flightsim/analysis/trim.cpp
   src/flightsim/sim/aircraft_scenario.cpp
+  src/flightsim/sim/aircraft_runner.cpp
   src/flightsim/analysis/flight_vars.cpp
   src/flightsim/env/atmosphere.cpp
   src/flightsim/env/wind.cpp
@@ -58,6 +59,7 @@ include(GoogleTest)
 
 add_executable(unit_tests
   tests/unit/test_trim.cpp
+  tests/unit/test_aircraft_runner.cpp
   tests/unit/test_smoke.cpp
   tests/unit/test_quat.cpp
   tests/unit/test_frames.cpp
