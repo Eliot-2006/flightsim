@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 
 namespace flightsim {
@@ -19,14 +20,27 @@ double Pid::update(double setpoint, double measurement, double dt) {
   return update(setpoint, measurement, dt, g_.umin, g_.umax);
 }
 double Pid::update(double setpoint, double measurement, double dt, double umin, double umax) {
+  return step(setpoint, measurement, dt, umin, umax, std::nullopt);
+}
+double Pid::update(double setpoint, double measurement, double dt, double umin, double umax, double applied) {
+  if (!std::isfinite(applied)) {
+    throw std::invalid_argument("PID applied output must be finite");
+  }
+  return step(setpoint, measurement, dt, umin, umax, applied);
+}
+double Pid::step(double setpoint, double measurement, double dt, double umin, double umax,
+                 std::optional<double> applied) {
   if (!std::isfinite(setpoint) || !std::isfinite(measurement) || !std::isfinite(dt) || dt <= 0 ||
       !std::isfinite(umin) || !std::isfinite(umax) || umin > umax) {
     throw std::invalid_argument("PID requires finite inputs, dt>0 and umin<=umax");
   }
+  // ki == 0: no integrator. Neither the reset nor back-calculation may create one, because nothing would
+  // integrate it away again: a stored offset would bias the output permanently.
+  const bool integrating = g_.ki != 0;
   const double error = setpoint - measurement;
   const double proportional = g_.kp * error;
   if (resetting_) {
-    integral_ = initial_output_ - proportional;
+    integral_ = integrating ? initial_output_ - proportional : 0;
     derivative_ = 0;
   } else {
     derivative_ = measured_ ? (g_.tf * derivative_ + measurement - measurement_) / (g_.tf + dt) : 0;
@@ -38,8 +52,8 @@ double Pid::update(double setpoint, double measurement, double dt, double umin, 
   // Return the requested value directly: subtracting/re-adding P can lose low output bits.
   const double output = resetting_ ? initial_output_ : std::clamp(raw, umin, umax);
   resetting_ = false;
-  if (antiwindup) {
-    integral_ += dt * (output - raw) / g_.tt;
+  if (antiwindup && integrating) {
+    integral_ += dt * (applied.value_or(output) - raw) / g_.tt;
   }
   return output;
 }

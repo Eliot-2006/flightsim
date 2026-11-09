@@ -22,6 +22,10 @@ constexpr double kSlTfacPerFt = 0.703e-5;  // 1/ft
 constexpr double kSlDensityExp = 4.14;
 constexpr double kSlGamma = 1.4;
 constexpr double kSlGasConst = 1716.3;  // ft^2/(s^2 degR)
+// S&L `adc` computes static pressure as PS = 1715 * RHO * T, a different gas constant from the 1716.3 in
+// its speed of sound; both are kept verbatim. Pressure is output-only: no force, moment or derivative reads
+// it.
+constexpr double kSlPressureGasConst = 1715.0;  // ft^2/(s^2 degR)
 
 AtmState sl_adc(double h_m) {
   const double h_ft = h_m / units::ft;
@@ -30,7 +34,7 @@ AtmState sl_adc(double h_m) {
   const double rho =
       kSlRho0 * std::pow(tfac, kSlDensityExp);  // slug/ft^3, density keeps using tfac above the break
   return {rho * units::slug / (units::ft * units::ft * units::ft), T_R * kK_per_R,
-          rho * kSlGasConst * T_R * units::lbf / (units::ft * units::ft),  // ideal gas, lbf/ft^2 -> Pa
+          rho * kSlPressureGasConst * T_R * units::lbf / (units::ft * units::ft),  // S&L PS, lbf/ft^2 -> Pa
           std::sqrt(kSlGamma * kSlGasConst * T_R) * units::ft};
 }
 

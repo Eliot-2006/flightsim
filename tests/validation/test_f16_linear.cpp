@@ -66,11 +66,16 @@ TEST(F16Linear, LN1Level30Eigenvalues) {
     }
     std::cout << std::setprecision(12) << "LN1 " << key << " ours=" << mode.eig << " published=" << p
               << " difference=" << mode.eig - p << '\n';
-    // Task 5.2: 1% or one last printed digit, per real/imag component.
+    // PRD 8.5 LN1 acceptance: eigenvalues within 1 % (Task 5.2: or 1 in the last printed digit), per
+    // real/imaginary component. This test enforces the tighter regression bound max(2 x observed, 1 in the
+    // last printed digit) as max(2.5e-4 relative, digit): the only component outside one printed digit is
+    // the short-period imaginary part (1.72e-4 against 1e-4, i.e. 1.16e-4 relative); all others are within
+    // their digit (phugoid real 2.95e-5 vs 1e-4, roll 8.26e-4 vs 1e-3, dutch-roll imaginary 3.34e-4 vs 1e-2).
+    constexpr double kEigRelative = 2.5e-4;
     EXPECT_LE(std::abs(mode.eig.real() - p.real()),
-              std::max(.01 * std::abs(p.real()), key == "roll_subsidence" ? .001 : .0001));
+              std::max(kEigRelative * std::abs(p.real()), key == "roll_subsidence" ? .001 : .0001));
     EXPECT_LE(std::abs(mode.eig.imag() - p.imag()),
-              std::max(.01 * std::abs(p.imag()), key == "dutch_roll" ? .01 : .0001));
+              std::max(kEigRelative * std::abs(p.imag()), key == "dutch_roll" ? .01 : .0001));
     EXPECT_DOUBLE_EQ(mode.wn, std::abs(mode.eig));
     EXPECT_DOUBLE_EQ(mode.zeta, -mode.eig.real() / mode.wn);
     EXPECT_DOUBLE_EQ(mode.tau, -1 / mode.eig.real());
@@ -89,8 +94,10 @@ TEST(F16Linear, LN1LateralMatrix) {
       a(i, j) = lm.A(ix[static_cast<std::size_t>(i)], ix[static_cast<std::size_t>(j)]);
     }
   }
-  // Task 5.2 textbook lateral: 1% or one last printed digit.
-  matrix_check(a, *ref["LN1"]["level_30"]["lateral_textbook"]["A"]["value"].as_array(), .01);
+  // PRD 8.5 / Task 5.2 acceptance: 1 % or one last printed digit. Enforced here: the regression bound
+  // max(2 x observed, digit) as max(2e-3 relative, digit). Entries outside their printed digit reach at most
+  // 9.23e-4 relative (r-row, p-column -0.026358, difference 2.43e-5); the others are at most 2.44e-4.
+  matrix_check(a, *ref["LN1"]["level_30"]["lateral_textbook"]["A"]["value"].as_array(), 2e-3);
 }
 TEST(F16Linear, LN1LongitudinalTutorialMatrix) {
   auto s = scenario();
@@ -113,9 +120,12 @@ TEST(F16Linear, LN1LongitudinalTutorialMatrix) {
     b(i, 1) = row * lm.B(ix[static_cast<std::size_t>(i)], 1) * units::deg;
   }
   std::cout << "LN1 tutorial-computed (single-lineage secondary source)\n";
-  // Task 5.2 rounded tutorial-computed matrix: 2%.
-  matrix_check(a, *ref["LN1"]["level_30"]["longitudinal_tutorial"]["A"]["value"].as_array(), .02);
-  matrix_check(b, *ref["LN1"]["level_30"]["longitudinal_tutorial"]["B"]["value"].as_array(), .02);
+  // Task 5.2 acceptance for this rounded tutorial-computed matrix: 2 % or one last printed digit. The entries
+  // are rounded to display precision (2-3 significant figures), and every observed difference is within one
+  // printed digit (largest: B alpha-row -0.0021/-0.0022 at 0.50/0.49 digit, A[alpha,V] -0.0003 at 0.46
+  // digit), so the regression bound max(2 x observed, digit) is the last printed digit alone.
+  matrix_check(a, *ref["LN1"]["level_30"]["longitudinal_tutorial"]["A"]["value"].as_array(), 0);
+  matrix_check(b, *ref["LN1"]["level_30"]["longitudinal_tutorial"]["B"]["value"].as_array(), 0);
 }
 TEST(F16Linear, LN2QuadraticScaling) {
   auto s = scenario();
