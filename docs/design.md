@@ -216,3 +216,102 @@ and retains the [0.9, 4.2] order bounds. Piecewise-linear tables reduce smoothne
 at cell crossings, so aircraft order is measured rather than assumed to be four.
 The smooth-case harness, its asymptotic-window selection and its 1e-3
 reference-accuracy rule are unchanged.
+
+### M5: trim and linearization conventions
+
+Trim solves `[Vdot/g, alphadot, qdot]` for alpha, throttle and elevator using
+central differences and a three-variable Levenberg–Marquardt system. All three
+published level cases converge below the unchanged 1e-10 infinity-norm bound.
+TR2 retains its original bounds: the observed 10 s altitude drift at xcg=.35 is
+-8.4e-13 ft. At sea level this flags a subpicometer negative-altitude thrust
+lookup; the implementation does not clamp the physics or hide that diagnostic.
+
+LN1 uses xcg=.30 exclusively. The full 13-state Jacobian includes power lag;
+mode comparisons remove the power state and use `[V,alpha,theta,q]`, holding P
+at trim, because the reference has a tabulated engine. The lateral subset is
+`[beta,phi,p,r]`. For the tutorial B, throttle uses the algebraic steady-engine
+response `B_xu - A_xP B_Pu/A_PP`; elevator columns convert rad to deg, and V
+rows/columns convert m/s to ft/s. These operations run in C++, not Python.
+The trim result is rejected if its final lookup monitor flags any extrapolation,
+including engine Mach/altitude or elevator table limits; CLI trim JSON also
+reports trial lookup flags. Climbing-response exports subtract nominal altitude
+travel along with horizontal travel, so all exported coordinates are perturbations.
+The published longitudinal matrices are tutorial-computed and the lateral
+matrix/eigenvalues are textbook values quoted by a secondary source. All share
+one Archimedes lineage; multiple citations do not make them independent.
+
+Printed-digit floors from PRD §8.5 matter: tutorial A[alpha,V] prints -0.0003,
+where ours is -0.00025372513 (difference +4.62749e-5); the two small B entries
+print -0.0021/-0.0022, where ours is -0.0020501361/-0.0021507102. These are
+within one last printed digit. Relative bounds remain 1% for textbook values
+and 2% for tutorial matrices. No tolerance or source number has been changed.
+The small rotational differences remain consistent with the rounded-inertia
+finding in A1; there is no calibration of the production inertia.
+
+At xcg=.35 the short-period pair splits into real longitudinal roots, one
+unstable. The CLI preserves these as `longitudinal_real_1/2` rather than forcing
+a complex-mode classification. The canonical published five-mode comparison
+is performed only at xcg=.30.
+
+### M5: LN2 active breakpoint guard (orchestrator ruling)
+
+The original sea-level, rotor-on steps (-0.5 and -0.05 deg, 5 s, RK4 dt=.01)
+gave a quadratic ratio of 96.3359912 but flagged four inactive signed-beta
+lookups and a brief negative-altitude thrust lookup. The latter is a real
+initial lift-loss transient, not an interpolation bug: the large step first
+evaluates thrust at h=-4.113491259e-6 m. LN2's altitude is not prescribed by the
+plan, so the study now uses a fresh 502 ft/s, xcg=.30 trim at **100 ft** (30.48 m),
+inside the same thrust-table cell for the full response. SlAdc, g=data.g_sl,
+rotor on, ideal surfaces, both step sizes, the 5 s duration and dt=.01 remain
+unchanged. Published TR1/LN1 comparisons still use their specified sea-level
+operating points. The CLI exports the separate response operating point and x0.
+
+The orchestrator authorized exactly two exclusions, with assertions in
+`F16Linear.LN2QuadraticScaling`:
+
+- DLDA, DLDR, DNDA and DNDR may change cells only while da=dr=0 exactly
+  throughout the run. The test asserts ideal surfaces and zero input commands,
+  and asserts each run's maximum absolute effective da/dr is exactly zero,
+  accumulated at **every RK4 stage**. Each coefficient's output is multiplied
+  by zero, so its cell changes cannot act on this response.
+- The Cl/Cn sign fold at beta=0 is smooth only inside the same first |beta|
+  cell: every loaded alpha-row intercept Cl(alpha,0) and Cn(alpha,0) must be
+  exactly zero. The test checks every row of both tables, the unchanged cell
+  index and first-beta-cell index. Bilinear interpolation then gives
+  `sign(beta)*C(alpha,abs(beta)) = beta*slope(alpha)` across zero. Actual Cl/Cn
+  alpha or nonzero-|beta| cell changes are never excluded.
+
+Both step sizes record these events at t=.01 s:
+
+| Table | Cells | Classification and proof |
+|---|---|---|
+| aero.dlda | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dldr | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dnda | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.dndr | 15 → 14 | Inactive: da=dr=0 at every stage |
+| aero.cl | 12 → 12 | Smooth beta=0 fold; every alpha-row intercept is zero |
+| aero.cn | 12 → 12 | Smooth beta=0 fold; every alpha-row intercept is zero |
+
+The folded Cl/Cn table indices do not actually change; their sign-fold events
+are recorded explicitly for audit. The small negative beta is produced by
+rotor gyroscopic coupling: `-omega × h_rotor` contributes **q*hx** about body z
+when pitch builds after the elevator step, inducing yaw and sideslip.
+
+No other exclusions exist. Any other cx/cz/cm, damping, thrust or Cl/Cn cell
+change fails. Regression tests demonstrate that active alpha crossings and a
+10,000 ft thrust-altitude breakpoint still fail, nonzero aileron input prevents
+the effectiveness exclusion, and one nonzero Cl/Cn intercept at even a remote
+alpha row invalidates the fold exclusion. The raw lookup monitor and all
+interpolation/domain behavior remain unchanged; classification is confined to
+the LN2 diagnostic, and every event includes its table, cells, time and reason
+in test output, CLI JSON and the generated report.
+
+At 100 ft the max-error norms are 0.302671106748 and 0.00314170349212, giving
+**96.3398065754** within the unchanged [70,130] bound. There are no unexcluded
+cell changes and no out-of-domain lookups.
+
+LN3 at xcg=.30 selects epsilon=6e-6. The maximum relative matrix-entry changes
+against 6e-5 and 6e-7 are 5.94017e-10 and 1.39313e-10, both below 1e-5. The
+1e-2 through 1e-10 sweep exhibits truncation, a flat region and roundoff; each
+matrix is normalized by its own maximum absolute entry. The generated report
+contains every TR1, LN1 and LN3 difference and the passing LN2 monitor evidence.

@@ -115,4 +115,78 @@ def build(out: Path) -> dict:
             m[f"bench.step.{integ}.ns"] = ns
         else:
             m[f"bench.r3run.{integ}.us"] = ns / 1e3
+    m.update(aircraft(out))
+    return m
+
+
+def aircraft(out: Path) -> dict:
+    """Published comparisons of C++ outputs; no dynamics, differentiation, or eigenanalysis in Python."""
+    import tomllib
+
+    refs = tomllib.loads((Path(__file__).resolve().parents[2] / "data/f16/reference_values.toml").read_text())
+    m = {}
+    rows = []
+    for case in ("level_35", "level_30", "level_38"):
+        result = json.loads((out / "aircraft" / f"trim_{case}.json").read_text())["trim"]
+        for field, name, unit in (("alpha_rad", "alpha", "rad"), ("throttle", "throttle", "1"),
+                                  ("elevator_deg", "elevator", "deg")):
+            ours, published = result[field], refs["TR1"][case][name]["value"]
+            difference = ours - published
+            m[f"trim.{case}.{name}.difference"] = difference
+            rows.append(f"| {case} | {name} [{unit}] | {ours:.10g} | {published:.10g} | {difference:.6g} | "
+                        f"{abs(difference / published):.3%} |")
+    m["trim.table"] = "\n".join(rows)
+    linear = json.loads((out / "aircraft" / "linear_level_30.json").read_text())
+    rows = []
+    for mode in linear["modes"]:
+        key = "roll_subsidence" if mode["name"] == "roll" else mode["name"]
+        p = refs["LN1"]["level_30"][key]["value"]
+        if not isinstance(p, list):
+            p = [p, 0]
+        real, imag = mode["real"], mode["imag"]
+        delta = complex(real - p[0], imag - p[1])
+        rel = abs(delta) / abs(complex(*p))
+        rows.append(f"| {mode['name']} | {real:.9g} + {imag:.9g}i | {p[0]} + {p[1]}i | "
+                    f"{delta.real:.5g} + {delta.imag:.5g}i | {rel:.3%} | {mode['wn']:.6g} | "
+                    f"{mode['zeta']:.6g} | {mode['tau']:.6g} |")
+    m["linear.modes.table"] = "\n".join(rows)
+    rows = []
+    for source in ("lateral_textbook", "longitudinal_tutorial"):
+        reference = refs["LN1"]["level_30"][source]
+        for i, row in enumerate(reference["A"]["value"]):
+            for j, published in enumerate(row):
+                matrix = "longitudinal_A" if source == "longitudinal_tutorial" else "lateral_A"
+                ours = linear["sl_comparison"][matrix][i][j]
+                diff = ours - published
+                rel = f"{abs(diff / published):.3%}" if published else "absolute"
+                rows.append(f"| {source} A[{i},{j}] | {ours:.10g} | {published:.10g} | {diff:.6g} | {rel} |")
+        if source == "longitudinal_tutorial":
+            for i, row in enumerate(reference["B"]["value"]):
+                for j, published in enumerate(row):
+                    ours = linear["sl_comparison"]["longitudinal_B"][i][j]
+                    diff = ours - published
+                    rel = f"{abs(diff / published):.3%}" if published else "absolute"
+                    rows.append(f"| {source} B[{i},{j}] | {ours:.10g} | {published:.10g} | {diff:.6g} | {rel} |")
+    m["linear.matrices.table"] = "\n".join(rows)
+    m["linear.ln3.table"] = "\n".join(f"| {p['epsilon']:.1e} | {p['change']:.6g} |" for p in linear["sweep"])
+    m["linear.ln3.epsilon"] = linear["chosen_epsilon"]
+    m["linear.ln3.flat"] = "; ".join(f"ε={p['epsilon']:.1e}: {p['change']:.6g}" for p in linear["flat_region"])
+    m["linear.ln2.altitude"] = linear["response_operating_point"]["h_m"]
+    big, small = linear["responses"]
+    m["linear.ln2.ratio"] = big["max_error"] / small["max_error"]
+    m["linear.ln2.status"] = "pass" if all(not r["cells_changed"] and not r["out_of_domain"]
+                                           and r["max_abs_aileron"] == r["max_abs_rudder"] == 0
+                                           for r in linear["responses"]) and 70 <= m["linear.ln2.ratio"] <= 130 else "FAIL"
+    m["linear.ln2.monitor"] = "; ".join(
+        f"{r['step_deg']:.2g} deg: active_cells_changed={r['cells_changed']}, out_of_domain={r['out_of_domain']}, "
+        f"max |da|={r['max_abs_aileron']:.3g} rad, max |dr|={r['max_abs_rudder']:.3g} rad"
+        for r in linear["responses"])
+    rows = []
+    for response in linear["responses"]:
+        for change in response["cell_changes"]:
+            reason = change["reason"].replace("|", r"\|")
+            verdict = "excluded" if change["ignored"] else "FAIL"
+            rows.append(f"| {response['step_deg']:.2g} | {change['table']} | {change['from']} → {change['to']} | "
+                        f"{change['t']:.3g} | {verdict}: {reason} |")
+    m["linear.ln2.changes.table"] = "\n".join(rows)
     return m

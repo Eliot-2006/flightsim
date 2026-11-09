@@ -3,6 +3,7 @@ a Figure(...). Builders take the `out/` directory and return a plotly Figure. Tr
 slot index so the page can re-colour them for dark mode (see report.py)."""
 
 import math
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -181,6 +182,35 @@ def t4(out: Path) -> go.Figure:
     return _style(fig, 520)
 
 
+def ln3(out: Path) -> go.Figure:
+    data = json.loads((out / "aircraft/linear_level_30.json").read_text())
+    fig = go.Figure(go.Scatter(x=[p["epsilon"] for p in data["sweep"]],
+                               y=[p["change"] for p in data["sweep"]], mode="lines+markers",
+                               name="max relative entry change vs 10ε", meta=0,
+                               line=dict(color=LIGHT[0], width=2)))
+    fig.add_vline(x=data["chosen_epsilon"], line_dash="dash", annotation_text="chosen ε = 6e-6")
+    fig.update_xaxes(type="log", title_text="finite-difference ε [-]")
+    fig.update_yaxes(type="log", title_text="max entry change / max matrix entry [-]")
+    return _style(fig, 430)
+
+
+def ln2(out: Path) -> go.Figure:
+    data = json.loads((out / "aircraft/linear_level_30.json").read_text())
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Airspeed perturbation", "Angle-of-attack perturbation"))
+    for slot, response in enumerate(data["responses"]):
+        points = response["points"]
+        for key, dash in (("nonlinear", "solid"), ("linear", "dash")):
+            for col, state in ((1, 0), (2, 1)):
+                fig.add_trace(go.Scatter(x=[p["t"] for p in points], y=[p[key][state] for p in points],
+                                         name=f"{response['step_deg']:.2g}° {key}", showlegend=col == 1,
+                                         mode="lines", meta=slot, line=dict(color=LIGHT[slot], dash=dash)),
+                              row=1, col=col)
+    fig.update_xaxes(title_text="time t [s]")
+    fig.update_yaxes(title_text="ΔV [m/s]", row=1, col=1)
+    fig.update_yaxes(title_text="Δα [rad]", row=1, col=2)
+    return _style(fig, 430)
+
+
 FIGURES = [
     Figure("convergence", "Convergence: error against step size",
            "Final-time error against step size h on log–log axes, one panel per validation case; dashed grey lines "
@@ -210,3 +240,12 @@ FIGURES = [
            "validation_tests: Translational.T4EulerEnergyGrows, Translational.T4Rk4EnergyDriftSmall; unit_tests: LieIntegrators.SymplecticEulerOscillatorEnergyBounded",
            t4),
 ]
+
+FIGURES.extend([
+    Figure("ln3", "LN3: finite-difference step sweep",
+           "Central differences from ε=1e-2 to 1e-10: truncation, a flat region, then roundoff. Changes are maximum absolute entry differences divided by the maximum absolute entry of each matrix, taking the larger of A and B. C++ computes every Jacobian.",
+           "validation_tests: F16Linear.LN3StepSweep (chosen ε vs 10ε and ε/10 ≤1e-5)", ln3),
+    Figure("ln2", "LN2: linear and nonlinear elevator responses",
+           "Trailing-edge-up steps of 0.5° and 0.05° over 5 s from a fresh 100 ft trim, computed in C++. The ratio and lookup-monitor verdict are reported in docs/results.md; the guard excludes only zero-multiplier lateral controls and the asserted smooth beta=0 fold.",
+           "validation_tests: F16Linear.LN2QuadraticScaling (ratio [70,130] AND no active table kink crossed)", ln2),
+])

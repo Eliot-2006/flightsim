@@ -1,0 +1,13 @@
+# S&L sea-level trim; SI inside the model. References are single-lineage secondary sources.
+[aircraft]
+data = "data/f16/f16_sl.toml"
+xcg = 0.3
+atmosphere = "sl_adc"
+gravity = "sl"
+rotor = true
+actuators = false
+
+[trim]
+V_fps = 502.0
+h_ft = 0.0
+gamma_deg = 0.0

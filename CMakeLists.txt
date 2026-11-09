@@ -28,6 +28,10 @@ add_library(flightsim_core STATIC
   src/flightsim/math/interp.cpp
   src/flightsim/aircraft/f16_data.cpp
   src/flightsim/aircraft/f16_model.cpp
+  src/flightsim/analysis/linearize.cpp
+  src/flightsim/analysis/modes.cpp
+  src/flightsim/analysis/trim.cpp
+  src/flightsim/sim/aircraft_scenario.cpp
   src/flightsim/analysis/flight_vars.cpp
   src/flightsim/env/atmosphere.cpp
   src/flightsim/env/wind.cpp
@@ -53,6 +57,7 @@ enable_testing()
 include(GoogleTest)
 
 add_executable(unit_tests
+  tests/unit/test_trim.cpp
   tests/unit/test_smoke.cpp
   tests/unit/test_quat.cpp
   tests/unit/test_frames.cpp
@@ -75,6 +80,8 @@ target_compile_definitions(unit_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOUR
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 
 add_executable(validation_tests
+  tests/validation/test_f16_linear.cpp
+  tests/validation/test_f16_trim.cpp
   tests/validation/test_smoke_validation.cpp
   tests/validation/test_translational.cpp
   tests/validation/test_rotational.cpp

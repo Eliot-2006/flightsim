@@ -57,4 +57,67 @@ Release build, single thread, {{bench.cpus}} logical CPUs (Google Benchmark repo
 
 ## Aircraft
 
-Coming in M4–M7: F-16 consistency laws, trim and linearization, JSBSim cross-validation, autopilot performance.
+### Trim (TR1)
+
+S&L 502 ft/s, sea level, SlAdc, g=32.17 ft/s², rotor on, ideal surfaces.
+**Single-lineage secondary source**: Archimedes B1/B4 in `data/f16/reference_values.toml`.
+Bounds: 0.5% relative or one last printed digit, whichever is larger.
+
+| Case | Quantity | Ours | Published | Ours − published | Relative difference |
+|---|---|---|---|---|---|
+{{trim.table}}
+
+### Linear model and modes (LN1)
+
+Only xcg=0.30 has published comparison data. **Single-lineage secondary source**:
+Archimedes B2/B3/B5; longitudinal matrices are **tutorial-computed**, not direct textbook transcriptions.
+Modes use [V, α, θ, q] with power held at trim (power state removed), and [β, φ, p, r].
+The full exported 13-state A/B retains the power lag and uses SI/rad inputs.
+The comparison matrices use ft/s for V and deg for elevator, per the reference. For the
+published tabulated-engine B, throttle uses the steady-engine Pdot=0 response; power
+is held for the longitudinal A and its eigenvalues. All conversions are computed in C++.
+Mode and textbook lateral bounds: 1% or one last printed digit; tutorial matrices: 2%
+with the printed-digit floor (PRD §8.5). Exact zeros allow only central-difference roundoff.
+
+| Mode | Ours [1/s] | Published [1/s] | Difference [1/s] | Relative difference | ωn [rad/s] | ζ | τ [s] |
+|---|---|---|---|---|---|---|---|
+{{linear.modes.table}}
+
+Matrix indices are zero-based in each reference's listed state/input order.
+
+| Entry | Ours | Published | Ours − published | Relative difference |
+|---|---|---|---|---|
+{{linear.matrices.table}}
+
+### Linear vs nonlinear (LN2)
+
+Fresh trim at h={{linear.ln2.altitude}} m (100 ft), 502 ft/s, xcg=0.30, rotor on, ideal surfaces.
+5 s RK4 at dt=0.01 s, elevator −0.5° vs −0.05°; max error norm over [V, α, β, φ, θ, ψ, p, q, r]
+with V in m/s and the other coordinates in SI. Ratio **{{linear.ln2.ratio:.6f}}** (required [70,130]);
+combined ratio/domain/breakpoint verdict: **{{linear.ln2.status}}**.
+
+Monitor evidence: {{linear.ln2.monitor}}.
+
+Only the orchestrator's two exclusions apply: zero-multiplier DLDA/DLDR/DNDA/DNDR with da=dr=0
+exactly at every RK4 stage, and the smooth Cl/Cn β=0 fold with zero intercepts at every loaded alpha row
+and unchanged first |β| cell. Tests assert both justifications; every other cell change fails.
+The interior altitude keeps the initial lift transient inside the thrust-table domain.
+
+| Elevator step [deg] | Table | Cells | Time [s] | Verdict and reason |
+|---|---|---|---|---|
+{{linear.ln2.changes.table}}
+
+Rotor coupling q·hx produces the small beta. See `docs/design.md` for the validation findings;
+the overlay is in `out/index.html`.
+
+### Finite-difference step sweep (LN3)
+
+Chosen ε = {{linear.ln3.epsilon:.1e}}. Relative maximum entry changes against its neighbors:
+{{linear.ln3.flat}} (required ≤1e-5). Each matrix's maximum entry normalizes its maximum absolute change;
+the table takes the larger A/B change against the preceding 10ε step. The figure is in `out/index.html`.
+
+| ε | Relative maximum entry change |
+|---|---|
+{{linear.ln3.table}}
+
+JSBSim cross-validation and autopilot results follow in M6–M7.

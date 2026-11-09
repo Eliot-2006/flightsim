@@ -28,6 +28,7 @@ class Table1D {
   Table1D(std::string name, std::vector<double> x, std::vector<double> y);
   double operator()(double x, LookupMonitor* mon = nullptr) const;
   const std::string& name() const { return name_; }
+  int id() const { return id_; }  // matches LookupMonitor::cells, for diagnostic classification
   const std::vector<double>& x() const { return x_; }
 
  private:
@@ -42,6 +43,7 @@ class Table2D {
   Table2D(std::string name, std::vector<double> x, std::vector<double> y, Eigen::MatrixXd v);
   double operator()(double x, double y, LookupMonitor* mon = nullptr) const;
   const std::string& name() const { return name_; }
+  int id() const { return id_; }  // matches LookupMonitor::cells, for diagnostic classification
   const std::vector<double>& x() const { return x_; }
   const std::vector<double>& y() const { return y_; }
 
