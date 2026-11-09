@@ -256,7 +256,50 @@ Answer with evidence (script + output) each of: (1) `jsbsim.FGFDMExec(root_dir)`
 - `reference_values.toml`: A1 check case inputs and expected derivatives, TR1 trim results, LN1 linear model / eigenvalues — each value with ≥ 2 sources or flagged `single_source = true`; note disagreements.
 - Accept: diff script exits 0 (or only documented resolutions); every table has a citation; licenses of A and B recorded.
 
-### Tasks 4.2–4.6 (detailed when M1 + 4.0 + 4.1 are merged; interfaces fixed now)
+### Task 4.2 (detailed): Interpolation + F-16 data loader
+
+**Files:** Create `src/flightsim/math/interp.hpp/.cpp`, `src/flightsim/aircraft/f16_data.hpp/.cpp`; Test `tests/unit/test_interp.cpp`, `tests/unit/test_f16_data.cpp`.
+
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+struct LookupMonitor {                 // diagnostics; not thread-safe; passed by pointer, may be null
+  bool out_of_domain = false; std::string first_violation;   // "<table>: <axis>=<value> outside [lo,hi]"
+  bool record_cells = false; std::vector<std::array<int,2>> cells;   // per lookup (table-id hash, cell index) when record_cells
+  void reset();
+};
+class Table1D { public: Table1D(std::string name, std::vector<double> x, std::vector<double> y);
+  double operator()(double x, LookupMonitor* mon = nullptr) const; };
+class Table2D { public: Table2D(std::string name, std::vector<double> x, std::vector<double> y, Eigen::MatrixXd v);  // v(i,j) at (x_i, y_j)
+  double operator()(double x, double y, LookupMonitor* mon = nullptr) const; };
+// Semantics (S&L): piecewise (bi)linear; outside the breakpoint range, linear extrapolation using the boundary cell
+// (no distance limit), and the monitor flags out_of_domain. Breakpoints strictly increasing (checked in ctor).
+struct F16Data { /* all SI; angles rad; see header doc for every field */ };
+F16Data load_f16_data(const std::filesystem::path& toml_path);   // throws std::runtime_error naming the bad key
+}
+```
+F16Data rules: aero coefficient tables stay dimensionless; angle breakpoints converted deg→rad with `units::deg`; mass = `1/reciprocal_mass` slug → kg (S&L uses RM, not W/g — document); inertia slug·ft² → kg·m² (Ixz stored as the positive product ∫xz dm per S&L); S, b, cbar → m², m; `hx` → kg·m²/s; thrust tables lbf → N with altitude breakpoints ft → m, Mach dimensionless; surface limits deg → rad; actuator lag 1/s and rate limits → rad/s; engine throttle gearing / rtau / transition constants unchanged (percent, 1/s). Every TOML table maps to one named field; unknown or missing tables are errors. The header documents each field's meaning, units, axis order and source key.
+- [ ] Tests: `ExactAtBreakpoints`, `LinearBetweenBreakpoints`, `ExtrapolatesFromBoundaryCell` (both ends, 1D and 2D), `MonitorFlagsOutOfDomain` (+ message names table and axis), `MonitorRecordsCells`, `RejectsNonIncreasingBreakpoints`, `RejectsShapeMismatch`; `LoadsRealDataFile` (counts: cx 12×5, cl 12×7, damping 9 tables, thrust 6×6), `MassPropsConvertedToSI` (mass = (1/0.00157)·14.59390294 kg ± 1e-9 rel; Ixx = 9496·14.59390294·0.3048² ± 1e-12 rel), `AngleBreakpointsInRadians`, `ThrustInNewtons`, `RejectsMissingTable` (temp copy with one table removed).
+
+### Task 4.3 (detailed): Atmosphere + gravity
+
+**Files:** Create `src/flightsim/env/atmosphere.hpp/.cpp`; Test `tests/unit/test_atmosphere.cpp`.
+
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+enum class AtmosphereKind { SlAdc, Us76 };
+struct AtmState { double rho, T, p, a; };            // kg/m³, K, Pa, m/s
+AtmState atmosphere(AtmosphereKind, double h_m);      // geometric altitude; valid 0..20 km (Us76), S&L range for SlAdc; throws std::domain_error outside [-500 m, 20 km]
+struct GravityModel { double g0 = units::g0; double R = std::numeric_limits<double>::infinity();
+  double gravity(double h_m) const; };              // g0·(R/(R+h))²; R=inf → g0
+}
+```
+- SlAdc = S&L `adc` routine: `tfac = 1 − 0.703e-5·h_ft`, `T = 519·tfac °R` (390 °R for h ≥ 35,000 ft), `rho = 2.377e-3·tfac^4.14 slug/ft³`, `a = sqrt(1.4·1716.3·T) ft/s`, converted to SI. Constants hard-coded in `atmosphere.cpp` with a test (`SlAdcConstantsMatchDataFile`) that they equal `data/f16/f16_sl.toml [environment]`. p from the ideal gas law with the same gas constant.
+- Us76 = U.S. Standard Atmosphere 1976 layers 0–11 km (−6.5 K/km) and 11–20 km (isothermal), in **geopotential** altitude `H = r0·h/(r0+h)`, r0 = 6,356,766 m; T0 = 288.15 K, p0 = 101,325 Pa, R = 287.05287 J/(kg·K), g0 = 9.80665, γ = 1.4.
+- [ ] Tests: `Us76MatchesStandardTable` at 0, 1, 5, 11, 15, 20 km for ρ, T, p, a ≤ 1e-4 rel against values transcribed (with citation in the test) from the published 1976 standard tables; `SlAdcMatchesRoutine` (hand-evaluated formula at 0, 10,000, 40,000 ft); `SlAdcConstantsMatchDataFile`; `GravityInverseSquare` (R = 6,371,000 m, h = 10 km); `GravityConstantWhenRInfinite`; `ThrowsOutsideRange`.
+
+### Tasks 4.4–4.6 (detailed after 4.2/4.3 merge; interfaces fixed now)
 - 4.2 `aircraft/f16_data.{hpp,cpp}`: `F16Data load_f16_data(path)` (SI-converted), `math/interp.hpp`: `Table1D`, `Table2D` with S&L one-cell linear extrapolation, `LookupMonitor` (out-of-domain flag + optional breakpoint-cell record). Tests: exact at breakpoints, linear between, extrapolation, monitor.
 - 4.3 `env/atmosphere.{hpp,cpp}`: `enum class AtmosphereKind { SlAdc, Us76 }`, `struct AtmState { double rho, T, p, a; }`, `AtmState atmosphere(AtmosphereKind, double h_m)`; `GravityModel { double g0; double R = inf; double gravity(double h) const; }`. Tests per §10.2.
 - 4.4 `aircraft/f16_model.{hpp,cpp}`: `struct F16Input { double throttle, de, da, dr; }` (rad), `struct F16Model { F16Data data; AtmosphereKind atm; GravityModel grav; WindModel wind; bool actuators; double xcg; Vec<17> deriv(double t, const Vec<17>& x, const F16Input& u) const; ForceMoment forces(...) const; }`; `analysis/flight_vars.{hpp,cpp}`: x13 ↔ model-state maps, `Vec<13> f13(const F16Model&, const Vec<13>& x13, const F16Input& u)`.
