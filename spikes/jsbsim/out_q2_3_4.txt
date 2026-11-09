@@ -1,0 +1,25 @@
+jsbsim 1.3.3
+Q2 API: FGFDMExec.load_planet(PlanetPath: str, useAircraftPath: bool) -> bool ; file root <planet>
+ planet=False: gravity-model default=1.0  r_veh=20895478.100 ft  |v_eci|=1187.7983  vt=500.0000  omega_planet(eci-vs-ecef proxy) diff=687.7983 fps
+ planet=True: gravity-model default=1.0  r_veh=20930646.325 ft  |v_eci|=500.0000  vt=500.0000  omega_planet(eci-vs-ecef proxy) diff=-0.0000 fps
+ load_planet after load_model -> True
+Q3 set simulation/gravity-model=0 -> read 0.0; g at lat0,h=5000ft: n/a
+Q3 set simulation/gravity-model=1 -> read 1.0; g at lat0,h=5000ft: n/a
+Q4 defaults: {'rate/rotational': 1.0, 'rate/translational': 3.0, 'position/rotational': 1.0, 'position/translational': 4.0}
+   simulation/integrator/rate/rotational: set->read {-1: -1.0, 0: 0.0, 1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0, 6: 6.0, 7: 7.0, 8: 8.0, 9: 9.0, 10: 10.0}
+   simulation/integrator/rate/translational: set->read {-1: -1.0, 0: 0.0, 1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0, 6: 6.0, 7: 7.0, 8: 8.0, 9: 9.0, 10: 10.0}
+   simulation/integrator/position/rotational: set->read {-1: -1.0, 0: 0.0, 1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0, 6: 6.0, 7: 7.0, 8: 8.0, 9: 9.0, 10: 10.0}
+   simulation/integrator/position/translational: set->read {-1: -1.0, 0: 0.0, 1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0, 6: 6.0, 7: 7.0, 8: 8.0, 9: 9.0, 10: 10.0}
+   ref (defaults, dt=1/4800): h,vt,theta = (4982.869099188596, 500.9601021814312, 2.713254071337601)
+   translational rate=1, dt=1/120: dh=-1.3933 dV=+0.05760 dtheta=-0.00225
+   rotational rate=1, dt=1/120: dh=-0.8915 dV=+0.03984 dtheta=-0.00083
+   translational rate=2, dt=1/120: dh=-1.8953 dV=+0.07537 dtheta=-0.00366
+   rotational rate=2, dt=1/120: dh=-1.1019 dV=+0.05164 dtheta=-0.00058
+   translational rate=3, dt=1/120: dh=-0.8915 dV=+0.03984 dtheta=-0.00083
+   rotational rate=3, dt=1/120: dh=-0.6814 dV=+0.02803 dtheta=-0.00108
+   translational rate=4, dt=1/120: dh=-0.8915 dV=+0.03983 dtheta=-0.00083
+   rotational rate=4, dt=1/120: dh=-0.6813 dV=+0.02803 dtheta=-0.00108
+   translational rate=5, dt=1/120: dh=-0.8915 dV=+0.03983 dtheta=-0.00083
+   rotational rate=5, dt=1/120: dh=-0.6813 dV=+0.02803 dtheta=-0.00108
+   translational rate=9, dt=1/120: dh=-0.8915 dV=+0.03983 dtheta=-0.00083
+   rotational rate=9, dt=1/120: dh=-0.6813 dV=+0.02803 dtheta=-0.00108

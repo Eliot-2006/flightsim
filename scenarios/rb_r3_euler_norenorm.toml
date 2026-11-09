@@ -1,0 +1,21 @@
+# R3 (PRD 8.3): torque-free asymmetric body, low-energy Landau-Lifshitz branch, same data as validation case R3.
+# Time-history figure input: energy and |H_N| drift at a fixed step h = 0.02 s, integrator = euler, renormalize = false.
+[sim]
+integrator = "euler"
+dt_s = 0.02
+t_final_s = 20.0
+output_every = 5
+renormalize = false
+
+[body]
+mass_kg = 1.0
+inertia_kgm2 = [[1.0, 0, 0], [0, 2.0, 0], [0, 0, 3.0]]
+
+[initial]
+position_m = [0, 0, 0]
+velocity_mps = [0, 0, 0]
+euler_deg = [17.188733853924695, -22.918311805232929, 28.64788975654116]   # (0.3, -0.4, 0.5) rad
+omega_radps = [0.5, 0, 1.0]
+
+[environment]
+gravity_mps2 = 0.0

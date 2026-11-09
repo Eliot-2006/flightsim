@@ -1,0 +1,120 @@
+<?xml version="1.0"?>
+<!-- THROWAWAY toy aircraft for the JSBSim feasibility spike. Made-up coefficients, not any real aircraft. -->
+<fdm_config name="toy_neg" version="2.0" release="ALPHA">
+ <fileheader><author>spike</author><description>toy body-axis-function aircraft</description></fileheader>
+ <metrics>
+  <wingarea unit="FT2">300</wingarea>
+  <wingspan unit="FT">30</wingspan>
+  <chord unit="FT">11.32</chord>
+  <location name="AERORP" unit="IN"><x>100</x><y>0</y><z>0</z></location>
+  <location name="EYEPOINT" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+  <location name="VRP" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+ </metrics>
+ <mass_balance>
+  <ixx unit="SLUG*FT2">9496</ixx>
+  <iyy unit="SLUG*FT2">55814</iyy>
+  <izz unit="SLUG*FT2">63100</izz>
+  <ixz unit="SLUG*FT2">982</ixz>
+  <emptywt unit="LBS">20500</emptywt>
+  <location name="CG" unit="IN"><x>100</x><y>0</y><z>0</z></location>
+ </mass_balance>
+ <ground_reactions/>
+ <propulsion>
+  <engine file="dummy_eng"><thruster file="direct"><location unit="IN"><x>100</x><y>0</y><z>0</z></location></thruster></engine>
+ </propulsion>
+ <flight_control name="FCS">
+ <!-- user properties: de-direct is a surface input that NO component writes (direct drive) -->
+ <property value="0">aero/de-direct-rad</property>
+ <property value="0">aero/da-direct-rad</property>
+ <property value="0">aero/dr-direct-rad</property>
+
+ <property value="12000">thrust/max-lbs</property>
+  <channel name="pass-through">
+   <summer name="elevator-sum"><input>fcs/elevator-cmd-norm</input><input>fcs/pitch-trim-cmd-norm</input><clipto><min>-1</min><max>1</max></clipto></summer>
+   <aerosurface_scale name="elevator">
+    <input>fcs/elevator-sum</input><domain><min>-1</min><max>1</max></domain>
+    <range><min>-0.4</min><max>0.4</max></range><output>fcs/elevator-pos-rad</output>
+   </aerosurface_scale>
+   <summer name="aileron-sum"><input>fcs/aileron-cmd-norm</input><input>fcs/roll-trim-cmd-norm</input><clipto><min>-1</min><max>1</max></clipto></summer>
+   <aerosurface_scale name="aileron">
+    <input>fcs/aileron-sum</input><domain><min>-1</min><max>1</max></domain>
+    <range><min>-0.4</min><max>0.4</max></range><output>fcs/left-aileron-pos-rad</output>
+   </aerosurface_scale>
+   <summer name="rudder-sum"><input>fcs/rudder-cmd-norm</input><input>fcs/yaw-trim-cmd-norm</input><clipto><min>-1</min><max>1</max></clipto></summer>
+   <aerosurface_scale name="rudder">
+    <input>fcs/rudder-sum</input><domain><min>-1</min><max>1</max></domain>
+    <range><min>-0.4</min><max>0.4</max></range><output>fcs/rudder-pos-rad</output>
+   </aerosurface_scale>
+  </channel>
+ </flight_control>
+ <external_reactions>
+  <force name="thrust" frame="BODY">
+   <function><product><property>fcs/throttle-cmd-norm[0]</property><property>thrust/max-lbs</property></product></function>
+   <location unit="IN"><x>100</x><y>0</y><z>0</z></location>
+   <direction><x>1</x><y>0</y><z>0</z></direction>
+  </force>
+ </external_reactions>
+ <aerodynamics>
+  <!-- de = FCS position + direct input, so both drive paths exist -->
+  <function name="aero/de-total">
+   <sum><property>fcs/elevator-pos-rad</property><property>aero/de-direct-rad</property></sum>
+  </function>
+  <function name="aero/da-total">
+   <sum><property>fcs/left-aileron-pos-rad</property><property>aero/da-direct-rad</property></sum>
+  </function>
+  <function name="aero/dr-total">
+   <sum><property>fcs/rudder-pos-rad</property><property>aero/dr-direct-rad</property></sum>
+  </function>
+  <axis name="X">
+   <function name="aero/force/X">
+    <description>qbar*S*(-0.025 + 0.2*alpha) lbf</description>
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property>
+     <sum><value>-0.025</value><product><value>0.2</value><property>aero/alpha-rad</property></product></sum>
+    </product>
+   </function>
+  </axis>
+  <axis name="Y">
+   <function name="aero/force/Y">
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property>
+     <sum><product><value>-0.5</value><property>aero/beta-rad</property></product>
+          <product><value>0.2</value><property>aero/dr-total</property></product></sum>
+    </product>
+   </function>
+  </axis>
+  <axis name="Z">
+   <function name="aero/force/Z">
+    <description>qbar*S*(-0.05 - 4.5*alpha)</description>
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property>
+     <sum><value>-0.05</value><product><value>-4.5</value><property>aero/alpha-rad</property></product></sum>
+    </product>
+   </function>
+  </axis>
+  <axis name="ROLL">
+   <function name="aero/moment/L">
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property>
+     <sum><product><value>-0.1</value><property>aero/beta-rad</property></product>
+          <product><value>0.15</value><property>aero/da-total</property></product>
+          <product><value>-0.4</value><property>aero/bi2vel</property><property>velocities/p-aero-rad_sec</property></product></sum>
+    </product>
+   </function>
+  </axis>
+  <axis name="PITCH">
+   <function name="aero/moment/M">
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/cbarw-ft</property>
+     <sum><value>0.02</value><product><value>-0.8</value><property>aero/alpha-rad</property></product>
+          <product><value>-1.0</value><property>aero/de-total</property></product>
+          <product><value>-12</value><property>aero/ci2vel</property><property>velocities/q-aero-rad_sec</property></product></sum>
+    </product>
+   </function>
+  </axis>
+  <axis name="YAW">
+   <function name="aero/moment/N">
+    <product><property>aero/qbar-psf</property><property>metrics/Sw-sqft</property><property>metrics/bw-ft</property>
+     <sum><product><value>0.1</value><property>aero/beta-rad</property></product>
+          <product><value>-0.1</value><property>aero/dr-total</property></product>
+          <product><value>-0.4</value><property>aero/bi2vel</property><property>velocities/r-aero-rad_sec</property></product></sum>
+    </product>
+   </function>
+  </axis>
+ </aerodynamics>
+</fdm_config>

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Spherical, non-rotating Earth. GM = JSBSim WGS84 default; radius = WGS84 equatorial. -->
+<planet name="Earth-zero-rot">
+  <semimajor_axis unit="FT">20925646.32546</semimajor_axis>
+  <semiminor_axis unit="FT">20925646.32546</semiminor_axis>
+  <rotation_rate unit="RAD/SEC">0.0</rotation_rate>
+  <GM unit="FT3/SEC2">14.0764417572E15</GM>
+  <J2>0.0</J2>
+</planet>

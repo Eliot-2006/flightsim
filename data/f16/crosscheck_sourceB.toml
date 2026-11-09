@@ -1,0 +1,471 @@
+# S&L low-fidelity F-16, original imperial units. Schema described in SOURCES.md.
+# FRD body axes; positive moments follow right-hand rule.
+# Elevator: trailing edge down positive, gives negative pitching moment.
+# Aileron: right trailing edge down / left up positive, gives negative roll.
+# Rudder: trailing edge left positive, gives side force right and negative yaw.
+# Coefficients use DEGREES for table lookup; rates p,q,r are rad/s.
+# Rows follow axes[0], columns axes[1]. No SI conversion in this file.
+# Cl/Cn are odd in beta; stored values apply to nonnegative abs_beta.
+# Damping multipliers: CXq,CZq,Cmq use q*cbar/(2V); others use p*b/(2V) or r*b/(2V).
+# Cz = lookup(alpha)*(1-(beta/57.3)^2) - 0.19*elevator/25.
+# Cy = -0.02*beta + 0.021*aileron/20 + 0.086*rudder/30.
+# Cm CG shift adds Cz_total*(xcg_ref-xcg); Cn subtracts Cy_total*(xcg_ref-xcg)*cbar/b.
+# Ixz is the positive product; inertia tensor off-diagonal entries are -Ixz.
+# W is NOMINAL NASA weight. For S&L check cases use reciprocal_mass=0.00157,
+# not g/W; this deliberate distinction is documented in SOURCES.md.
+# Actuator lag/rate numbers are S&L/UMN supplemental values; AeroBench uses
+# instantaneous position saturation only. Do not attribute lag/rate dynamics to it.
+# Independent raw B transcription (Archimedes); NASA W and AeroBench audit are supplemental.
+schema_version = 1
+
+[mass_geometry.W]
+value = 20500
+units = "lbf"
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I, p.43 (PDF p.49)"
+
+[mass_geometry.Ixx]
+value = 9496
+units = "slug*ft^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.Iyy]
+value = 55814
+units = "slug*ft^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.Izz]
+value = 63100
+units = "slug*ft^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.Ixz]
+value = 982
+units = "slug*ft^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.S]
+value = 300
+units = "ft^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.b]
+value = 30
+units = "ft"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.cbar]
+value = 11.32
+units = "ft"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.xcg_ref]
+value = 0.35
+units = "cbar"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py; NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table I"
+
+[mass_geometry.hx]
+value = 160
+units = "slug*ft^2/s"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16.py"
+
+[mass_geometry.reciprocal_mass]
+value = 0.0015699999969253965
+units = "1/slug"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md (32.17 / weight=20490.4459; derived, not a printed literal)"
+
+[environment.g]
+value = 32.17
+units = "ft/s^2"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.rtod]
+value = 57.29578
+units = "deg/rad"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.rho0]
+value = 0.002377
+units = "slug/ft^3"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.temperature0]
+value = 519
+units = "degR"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.temperature_high]
+value = 390
+units = "degR"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.temperature_break_altitude]
+value = 35000
+units = "ft"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.temperature_altitude_factor]
+value = 7.03e-06
+units = "1/ft"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.density_exponent]
+value = 4.14
+units = "1"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.gamma_air]
+value = 1.4
+units = "1"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[environment.gas_constant]
+value = 1716.3
+units = "ft^2/(s^2*degR)"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md"
+
+[aero.cx]
+axes = ["alpha", "elevator"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+elevator = [-24, -12, 0, 12, 24]
+units = "1"
+values = [
+  [-0.099, -0.048, -0.022, -0.04, -0.083],
+  [-0.081, -0.038, -0.02, -0.038, -0.073],
+  [-0.081, -0.04, -0.021, -0.039, -0.076],
+  [-0.063, -0.021, -0.004, -0.025, -0.072],
+  [-0.025, 0.016, 0.032, 0.006, -0.046],
+  [0.044, 0.083, 0.094, 0.062, 0.012],
+  [0.097, 0.127, 0.128, 0.087, 0.024],
+  [0.113, 0.137, 0.13, 0.085, 0.025],
+  [0.145, 0.162, 0.154, 0.1, 0.043],
+  [0.167, 0.177, 0.161, 0.11, 0.053],
+  [0.174, 0.179, 0.155, 0.104, 0.047],
+  [0.166, 0.167, 0.138, 0.091, 0.04],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (cx_data)"
+
+[aero.cm]
+axes = ["alpha", "elevator"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+elevator = [-24, -12, 0, 12, 24]
+units = "1"
+values = [
+  [0.205, 0.081, -0.046, -0.174, -0.259],
+  [0.168, 0.077, -0.02, -0.145, -0.202],
+  [0.186, 0.107, -0.009, -0.121, -0.184],
+  [0.196, 0.11, -0.005, -0.127, -0.193],
+  [0.213, 0.11, -0.006, -0.129, -0.199],
+  [0.251, 0.141, 0.01, -0.102, -0.15],
+  [0.245, 0.127, 0.006, -0.097, -0.16],
+  [0.238, 0.119, -0.001, -0.113, -0.167],
+  [0.252, 0.133, 0.014, -0.087, -0.104],
+  [0.231, 0.108, 0.0, -0.084, -0.076],
+  [0.198, 0.081, -0.013, -0.069, -0.041],
+  [0.192, 0.093, 0.032, -0.006, -0.005],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (cm_data)"
+
+[aero.cl]
+axes = ["alpha", "abs_beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+abs_beta = [0, 5, 10, 15, 20, 25, 30]
+units = "1"
+values = [
+  [0.0, -0.001, -0.003, -0.001, 0.0, 0.007, 0.009],
+  [0.0, -0.004, -0.009, -0.01, -0.01, -0.01, -0.011],
+  [0.0, -0.008, -0.017, -0.02, -0.022, -0.023, -0.023],
+  [0.0, -0.012, -0.024, -0.03, -0.034, -0.034, -0.037],
+  [0.0, -0.016, -0.03, -0.039, -0.047, -0.049, -0.05],
+  [0.0, -0.019, -0.034, -0.044, -0.046, -0.046, -0.047],
+  [0.0, -0.02, -0.04, -0.05, -0.059, -0.068, -0.074],
+  [0.0, -0.02, -0.037, -0.049, -0.061, -0.071, -0.079],
+  [0.0, -0.015, -0.016, -0.023, -0.033, -0.06, -0.091],
+  [0.0, -0.008, -0.002, -0.006, -0.036, -0.058, -0.076],
+  [0.0, -0.013, -0.01, -0.014, -0.035, -0.062, -0.077],
+  [0.0, -0.015, -0.019, -0.027, -0.035, -0.059, -0.076],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (cl_data)"
+
+[aero.cn]
+axes = ["alpha", "abs_beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+abs_beta = [0, 5, 10, 15, 20, 25, 30]
+units = "1"
+values = [
+  [0.0, 0.018, 0.038, 0.056, 0.064, 0.074, 0.079],
+  [0.0, 0.019, 0.042, 0.057, 0.077, 0.086, 0.09],
+  [0.0, 0.018, 0.042, 0.059, 0.076, 0.093, 0.106],
+  [0.0, 0.019, 0.042, 0.058, 0.074, 0.089, 0.106],
+  [0.0, 0.019, 0.043, 0.058, 0.073, 0.08, 0.096],
+  [0.0, 0.018, 0.039, 0.053, 0.057, 0.062, 0.08],
+  [0.0, 0.013, 0.03, 0.032, 0.029, 0.049, 0.068],
+  [0.0, 0.007, 0.017, 0.012, 0.007, 0.022, 0.03],
+  [0.0, 0.004, 0.004, 0.002, 0.012, 0.028, 0.064],
+  [0.0, -0.014, -0.035, -0.046, -0.034, -0.012, 0.015],
+  [0.0, -0.017, -0.047, -0.071, -0.065, -0.002, 0.011],
+  [0.0, -0.033, -0.057, -0.073, -0.041, -0.013, -0.001],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (cn_data)"
+
+[aero.dlda]
+axes = ["alpha", "beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+beta = [-30, -20, -10, 0, 10, 20, 30]
+units = "1"
+values = [
+  [-0.041, -0.041, -0.042, -0.04, -0.043, -0.044, -0.043],
+  [-0.052, -0.053, -0.053, -0.052, -0.049, -0.048, -0.049],
+  [-0.053, -0.053, -0.052, -0.051, -0.048, -0.048, -0.047],
+  [-0.056, -0.053, -0.051, -0.052, -0.049, -0.047, -0.045],
+  [-0.05, -0.05, -0.049, -0.048, -0.043, -0.042, -0.042],
+  [-0.056, -0.051, -0.049, -0.048, -0.042, -0.041, -0.037],
+  [-0.082, -0.066, -0.043, -0.042, -0.042, -0.02, -0.003],
+  [-0.059, -0.043, -0.035, -0.037, -0.036, -0.028, -0.013],
+  [-0.042, -0.038, -0.026, -0.031, -0.025, -0.013, -0.01],
+  [-0.038, -0.027, -0.016, -0.026, -0.021, -0.014, -0.003],
+  [-0.027, -0.023, -0.018, -0.017, -0.016, -0.011, -0.007],
+  [-0.017, -0.016, -0.014, -0.012, -0.011, -0.01, -0.008],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (dlda_data)"
+
+[aero.dldr]
+axes = ["alpha", "beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+beta = [-30, -20, -10, 0, 10, 20, 30]
+units = "1"
+values = [
+  [0.005, 0.007, 0.013, 0.018, 0.015, 0.021, 0.023],
+  [0.017, 0.016, 0.013, 0.015, 0.014, 0.011, 0.01],
+  [0.014, 0.014, 0.011, 0.015, 0.013, 0.01, 0.011],
+  [0.01, 0.014, 0.012, 0.014, 0.013, 0.011, 0.011],
+  [-0.005, 0.013, 0.011, 0.014, 0.012, 0.01, 0.011],
+  [0.009, 0.009, 0.009, 0.014, 0.011, 0.009, 0.01],
+  [0.019, 0.012, 0.008, 0.014, 0.011, 0.008, 0.008],
+  [0.005, 0.005, 0.005, 0.015, 0.01, 0.01, 0.01],
+  [0.0, 0.0, -0.002, 0.013, 0.008, 0.006, 0.006],
+  [-0.005, 0.004, 0.005, 0.011, 0.008, 0.005, 0.014],
+  [-0.011, 0.009, 0.003, 0.006, 0.007, 0.0, 0.02],
+  [0.008, 0.007, 0.005, 0.001, 0.003, 0.001, 0.0],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (dldr_data)"
+
+[aero.dnda]
+axes = ["alpha", "beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+beta = [-30, -20, -10, 0, 10, 20, 30]
+units = "1"
+values = [
+  [0.001, 0.002, -0.006, -0.011, -0.015, -0.024, -0.022],
+  [-0.027, -0.014, -0.008, -0.011, -0.015, -0.01, 0.002],
+  [-0.017, -0.016, -0.006, -0.01, -0.014, -0.004, -0.003],
+  [-0.013, -0.016, -0.006, -0.009, -0.012, -0.002, -0.005],
+  [-0.012, -0.014, -0.005, -0.008, -0.011, -0.001, -0.003],
+  [-0.016, -0.019, -0.008, -0.006, -0.008, 0.003, -0.001],
+  [0.001, -0.021, -0.005, 0.0, -0.002, 0.014, -0.009],
+  [0.017, 0.002, 0.007, 0.004, 0.002, 0.006, -0.009],
+  [0.011, 0.012, 0.004, 0.007, 0.006, -0.001, -0.001],
+  [0.017, 0.016, 0.007, 0.01, 0.012, 0.004, 0.003],
+  [0.008, 0.015, 0.006, 0.004, 0.011, 0.004, -0.002],
+  [0.016, 0.011, 0.006, 0.01, 0.011, 0.006, 0.001],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (dnda_data)"
+
+[aero.dndr]
+axes = ["alpha", "beta"]
+axis_units = ["deg", "deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+beta = [-30, -20, -10, 0, 10, 20, 30]
+units = "1"
+values = [
+  [-0.018, -0.028, -0.037, -0.048, -0.043, -0.052, -0.062],
+  [-0.052, -0.051, -0.041, -0.045, -0.044, -0.034, -0.034],
+  [-0.052, -0.043, -0.038, -0.045, -0.041, -0.036, -0.027],
+  [-0.052, -0.046, -0.04, -0.045, -0.041, -0.036, -0.028],
+  [-0.054, -0.045, -0.04, -0.044, -0.04, -0.035, -0.027],
+  [-0.049, -0.049, -0.038, -0.045, -0.038, -0.028, -0.027],
+  [-0.059, -0.057, -0.037, -0.047, -0.034, -0.024, -0.023],
+  [-0.051, -0.052, -0.03, -0.048, -0.035, -0.023, -0.023],
+  [-0.03, -0.03, -0.027, -0.049, -0.035, -0.02, -0.019],
+  [-0.037, -0.033, -0.024, -0.045, -0.029, -0.016, -0.009],
+  [-0.026, -0.03, -0.019, -0.033, -0.022, -0.01, -0.025],
+  [-0.013, -0.008, -0.013, -0.016, -0.009, -0.014, -0.01],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (dndr_data)"
+
+[aero.cz]
+axes = ["alpha"]
+axis_units = ["deg"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+units = "1"
+values = [0.77, 0.241, -0.1, -0.416, -0.731, -1.053, -1.366, -1.646, -1.917, -2.12, -2.248, -2.229]
+beta_scale = 57.3
+beta_scale_units = "deg"
+elevator_gain = -0.19
+elevator_gain_units = "1"
+elevator_scale = 25
+elevator_scale_units = "deg"
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (cz_data, _calc_cz)"
+
+[aero.cy]
+beta_gain = -0.02
+beta_gain_units = "1/deg"
+aileron_gain = 0.021
+aileron_gain_units = "1"
+rudder_gain = 0.086
+rudder_gain_units = "1"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (_calc_cy)"
+
+[aero.control_normalization]
+aileron = 20
+rudder = 30
+units = "deg"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (TabulatedAero.output)"
+
+[aero.damping]
+axes = ["alpha", "derivative"]
+axis_units = ["deg", "1"]
+alpha = [-10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+derivative = ["CXq", "CYr", "CYp", "CZq", "Clr", "Clp", "Cmq", "Cnr", "Cnp"]
+units = "1"
+values = [
+  [-0.267, 0.882, -0.108, -8.8, -0.126, -0.36, -7.21, -0.38, 0.061],
+  [0.11, 0.852, -0.108, -25.8, -0.026, -0.359, -0.54, -0.363, 0.052],
+  [0.308, 0.876, -0.188, -28.9, 0.063, -0.443, -5.23, -0.378, 0.052],
+  [1.34, 0.958, 0.11, -31.4, 0.113, -0.42, -5.26, -0.386, -0.012],
+  [2.08, 0.962, 0.258, -31.2, 0.208, -0.383, -6.11, -0.37, -0.013],
+  [2.91, 0.974, 0.226, -30.7, 0.23, -0.375, -6.64, -0.453, -0.024],
+  [2.76, 0.819, 0.344, -27.7, 0.319, -0.329, -5.69, -0.55, 0.05],
+  [2.05, 0.483, 0.362, -28.2, 0.437, -0.294, -6, -0.582, 0.15],
+  [1.5, 0.59, 0.611, -29, 0.68, -0.23, -6.2, -0.595, 0.13],
+  [1.49, 1.21, 0.529, -29.8, 0.1, -0.21, -6.4, -0.637, 0.158],
+  [1.83, 0.493, 0.298, -38.3, 0.447, -0.12, -6.6, -1.02, 0.24],
+  [1.21, -1.04, -2.27, -35.3, -0.33, -0.1, -6, -0.84, 0.15],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879; S&L low-fidelity tabulation; https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/aero.py (*q_data, *r_data, *p_data)"
+
+[engine.idle]
+axes = ["altitude", "mach"]
+axis_units = ["ft", "1"]
+altitude = [0, 10000, 20000, 30000, 40000, 50000]
+mach = [0, 0.2, 0.4, 0.6, 0.8, 1]
+units = "lbf"
+values = [
+  [1060.0, 635.0, 60.0, -1020.0, -2700.0, -3600.0],
+  [670.0, 425.0, 25.0, -710.0, -1900.0, -1400.0],
+  [880.0, 690.0, 345.0, -300.0, -1300.0, -595.0],
+  [1140.0, 1010.0, 755.0, 350.0, -247.0, -342.0],
+  [1500.0, 1330.0, 1130.0, 910.0, 600.0, -200.0],
+  [1860.0, 1700.0, 1525.0, 1360.0, 1100.0, 700.0],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table VI, p.93 (PDF p.99), M>=0.2; M=0 from S&L reproduction: https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py"
+
+[engine.military]
+axes = ["altitude", "mach"]
+axis_units = ["ft", "1"]
+altitude = [0, 10000, 20000, 30000, 40000, 50000]
+mach = [0, 0.2, 0.4, 0.6, 0.8, 1]
+units = "lbf"
+values = [
+  [12680.0, 12680.0, 12610.0, 12640.0, 12390.0, 11680.0],
+  [9150.0, 9150.0, 9312.0, 9839.0, 10176.0, 9848.0],
+  [6200.0, 6313.0, 6610.0, 7090.0, 7750.0, 8050.0],
+  [3950.0, 4040.0, 4290.0, 4660.0, 5320.0, 6100.0],
+  [2450.0, 2470.0, 2600.0, 2840.0, 3250.0, 3800.0],
+  [1400.0, 1400.0, 1560.0, 1660.0, 1930.0, 2310.0],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table VI, p.93 (PDF p.99), M>=0.2; M=0 from S&L reproduction: https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py"
+
+[engine.maximum]
+axes = ["altitude", "mach"]
+axis_units = ["ft", "1"]
+altitude = [0, 10000, 20000, 30000, 40000, 50000]
+mach = [0, 0.2, 0.4, 0.6, 0.8, 1]
+units = "lbf"
+values = [
+  [20000.0, 21420.0, 22700.0, 24240.0, 26070.0, 28886.0],
+  [15000.0, 15700.0, 16860.0, 18910.0, 21075.0, 23319.0],
+  [10800.0, 11225.0, 12250.0, 13760.0, 15975.0, 18300.0],
+  [7000.0, 7323.0, 8154.0, 9285.0, 11115.0, 13484.0],
+  [4000.0, 4435.0, 5000.0, 5700.0, 6860.0, 8642.0],
+  [2500.0, 2600.0, 2835.0, 3215.0, 3950.0, 5057.0],
+]
+source = "NASA TP-1538 (1979), https://ntrs.nasa.gov/citations/19800005879, Table VI, p.93 (PDF p.99), M>=0.2; M=0 from S&L reproduction: https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py"
+
+[engine.throttle_gearing]
+breakpoint = 0.77
+breakpoint_units = "1"
+low_slope = 64.94
+high_slope = 217.38
+slope_units = "percent"
+high_intercept = -117.3788
+intercept_units = "percent"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py (F16Engine.tgear; high intercept derived from slopes and breakpoint)"
+
+[engine.rtau]
+delta_power = [25, 50]
+delta_power_units = "percent"
+values = [1, 0.1]
+units = "1/s"
+middle_intercept = 1.9
+middle_intercept_units = "1/s"
+middle_slope = -0.036
+middle_slope_units = "1/(s*percent)"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py (NASAEngine._rtau)"
+
+[engine.power_lag]
+power_threshold = 50
+transition_up_target = 60
+transition_down_target = 40
+power_units = "percent"
+high_power_rate = 5
+high_power_rate_units = "1/s"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py (NASAEngine.dynamics)"
+
+[engine.thrust_power_levels]
+values = [0, 50, 100]
+units = "percent"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/engine.py (TabulatedEngine._calc_thrust)"
+
+[actuators.elevator]
+position_limits = [-25, 25]
+position_units = "deg"
+rate_limit = 60
+rate_units = "deg/s"
+lag_rate = 20.2020202020202
+lag_rate_units = "1/s"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/config.yaml full (lag_rate derived from tau=0.0495 s)"
+
+[actuators.aileron]
+position_limits = [-21.5, 21.5]
+position_units = "deg"
+rate_limit = 80
+rate_units = "deg/s"
+lag_rate = 20.2020202020202
+lag_rate_units = "1/s"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/config.yaml full (lag_rate derived from tau=0.0495 s)"
+
+[actuators.rudder]
+position_limits = [-30, 30]
+position_units = "deg"
+rate_limit = 120
+rate_units = "deg/s"
+lag_rate = 20.2020202020202
+lag_rate_units = "1/s"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/config.yaml full (lag_rate derived from tau=0.0495 s)"
+
+[actuators.throttle]
+position_limits = [0, 1]
+units = "1"
+source = "https://github.com/PineTreeLabs/archimedes/blob/5a5b82dc3ee82547c58667f68179136a9d0e2914/docs/source/tutorials/f16/f16_01.md (controls: throttle [0-1])"
+
+[actuators.aerobench]
+lag_enabled = false
+rate_limits_enabled = false
+source = "https://github.com/pheidlauf/AeroBenchVV/blob/cbb549801955b183eb1b0d5059bd1295e705fa3d/src/main/F16_Model/controlledF16.m; applyCtrlSatLimits.m; getDefaultSettings.m (same supplementary audit in both files)"

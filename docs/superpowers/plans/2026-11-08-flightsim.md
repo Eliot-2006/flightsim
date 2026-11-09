@@ -6,7 +6,7 @@
 
 **Architecture:** One static library `flightsim_core` (folders = modules), pure derivative functions over fixed-size Eigen vectors, integrators as free function templates, a thin CLI `flightsim`, GoogleTest suites split into `unit` and `validation` binaries, Python (uv-managed) for plots, reports, control design, and JSBSim.
 
-**Tech Stack:** C++20, CMake ≥ 3.25 + presets, Eigen 3.4.0, GoogleTest 1.15.2, Google Benchmark 1.9.1, toml++ 3.4.0 (all FetchContent with URL_HASH); Python 3.12 via uv (numpy, scipy, plotly, kaleido, control, jsbsim, pytest).
+**Tech Stack:** C++20, CMake ≥ 3.28 + presets, Eigen 3.4.0, GoogleTest 1.15.2, Google Benchmark 1.9.1, toml++ 3.4.0 (all FetchContent with URL_HASH); Python 3.12 via uv (numpy, scipy, plotly, kaleido, control, jsbsim, pytest).
 
 **Spec:** `docs/PRD.md` (approved). Section numbers below (§x.y) refer to it. Executors read both.
 
@@ -256,7 +256,104 @@ Answer with evidence (script + output) each of: (1) `jsbsim.FGFDMExec(root_dir)`
 - `reference_values.toml`: A1 check case inputs and expected derivatives, TR1 trim results, LN1 linear model / eigenvalues — each value with ≥ 2 sources or flagged `single_source = true`; note disagreements.
 - Accept: diff script exits 0 (or only documented resolutions); every table has a citation; licenses of A and B recorded.
 
-### Tasks 4.2–4.6 (detailed when M1 + 4.0 + 4.1 are merged; interfaces fixed now)
+### Task 4.2 (detailed): Interpolation + F-16 data loader
+
+**Files:** Create `src/flightsim/math/interp.hpp/.cpp`, `src/flightsim/aircraft/f16_data.hpp/.cpp`; Test `tests/unit/test_interp.cpp`, `tests/unit/test_f16_data.cpp`.
+
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+struct LookupMonitor {                 // diagnostics; not thread-safe; passed by pointer, may be null
+  bool out_of_domain = false; std::string first_violation;   // "<table>: <axis>=<value> outside [lo,hi]"
+  bool record_cells = false; std::vector<std::array<int,2>> cells;   // per lookup (table-id hash, cell index) when record_cells
+  void reset();
+};
+class Table1D { public: Table1D(std::string name, std::vector<double> x, std::vector<double> y);
+  double operator()(double x, LookupMonitor* mon = nullptr) const; };
+class Table2D { public: Table2D(std::string name, std::vector<double> x, std::vector<double> y, Eigen::MatrixXd v);  // v(i,j) at (x_i, y_j)
+  double operator()(double x, double y, LookupMonitor* mon = nullptr) const; };
+// Semantics (S&L): piecewise (bi)linear; outside the breakpoint range, linear extrapolation using the boundary cell
+// (no distance limit), and the monitor flags out_of_domain. Breakpoints strictly increasing (checked in ctor).
+struct F16Data { /* all SI; angles rad; see header doc for every field */ };
+F16Data load_f16_data(const std::filesystem::path& toml_path);   // throws std::runtime_error naming the bad key
+}
+```
+F16Data rules: aero coefficient tables stay dimensionless; angle breakpoints converted deg→rad with `units::deg`; mass = `1/reciprocal_mass` slug → kg (S&L uses RM, not W/g — document); inertia slug·ft² → kg·m² (Ixz stored as the positive product ∫xz dm per S&L); S, b, cbar → m², m; `hx` → kg·m²/s; thrust tables lbf → N with altitude breakpoints ft → m, Mach dimensionless; surface limits deg → rad; actuator lag 1/s and rate limits → rad/s; engine throttle gearing / rtau / transition constants unchanged (percent, 1/s). Every TOML table maps to one named field; unknown or missing tables are errors. The header documents each field's meaning, units, axis order and source key.
+- [ ] Tests: `ExactAtBreakpoints`, `LinearBetweenBreakpoints`, `ExtrapolatesFromBoundaryCell` (both ends, 1D and 2D), `MonitorFlagsOutOfDomain` (+ message names table and axis), `MonitorRecordsCells`, `RejectsNonIncreasingBreakpoints`, `RejectsShapeMismatch`; `LoadsRealDataFile` (counts: cx 12×5, cl 12×7, damping 9 tables, thrust 6×6), `MassPropsConvertedToSI` (mass = (1/0.00157)·14.59390294 kg ± 1e-9 rel; Ixx = 9496·14.59390294·0.3048² ± 1e-12 rel), `AngleBreakpointsInRadians`, `ThrustInNewtons`, `RejectsMissingTable` (temp copy with one table removed).
+
+### Task 4.3 (detailed): Atmosphere + gravity
+
+**Files:** Create `src/flightsim/env/atmosphere.hpp/.cpp`; Test `tests/unit/test_atmosphere.cpp`.
+
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+enum class AtmosphereKind { SlAdc, Us76 };
+struct AtmState { double rho, T, p, a; };            // kg/m³, K, Pa, m/s
+AtmState atmosphere(AtmosphereKind, double h_m);      // geometric altitude; valid 0..20 km (Us76), S&L range for SlAdc; throws std::domain_error outside [-500 m, 20 km]
+struct GravityModel { double g0 = units::g0; double R = std::numeric_limits<double>::infinity();
+  double gravity(double h_m) const; };              // g0·(R/(R+h))²; R=inf → g0
+}
+```
+- SlAdc = S&L `adc` routine: `tfac = 1 − 0.703e-5·h_ft`, `T = 519·tfac °R` (390 °R for h ≥ 35,000 ft), `rho = 2.377e-3·tfac^4.14 slug/ft³`, `a = sqrt(1.4·1716.3·T) ft/s`, converted to SI. Constants hard-coded in `atmosphere.cpp` with a test (`SlAdcConstantsMatchDataFile`) that they equal `data/f16/f16_sl.toml [environment]`. p from the ideal gas law with the same gas constant.
+- Us76 = U.S. Standard Atmosphere 1976 layers 0–11 km (−6.5 K/km) and 11–20 km (isothermal), in **geopotential** altitude `H = r0·h/(r0+h)`, r0 = 6,356,766 m; T0 = 288.15 K, p0 = 101,325 Pa, R = 287.05287 J/(kg·K), g0 = 9.80665, γ = 1.4.
+- [ ] Tests: `Us76MatchesStandardTable` at 0, 1, 5, 11, 15, 20 km for ρ, T, p, a ≤ 1e-4 rel against values transcribed (with citation in the test) from the published 1976 standard tables; `SlAdcMatchesRoutine` (hand-evaluated formula at 0, 10,000, 40,000 ft); `SlAdcConstantsMatchDataFile`; `GravityInverseSquare` (R = 6,371,000 m, h = 10 km); `GravityConstantWhenRInfinite`; `ThrowsOutsideRange`.
+
+### Task 4.4 (detailed): Wind model
+
+**Files:** Create `src/flightsim/env/wind.hpp/.cpp`; Test `tests/unit/test_wind.cpp`.
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+struct Gust { double t_start_s; double duration_s; double amplitude_mps; Vec3 direction_N; };   // full-wave 1-cos
+struct WindModel { Vec3 constant_N = Vec3::Zero(); std::optional<Gust> gust;
+  Vec3 wind_N(double t) const; };   // constant + gust: A/2·(1 − cos(2π (t−t0)/T)) for t0 ≤ t ≤ t0+T, else 0; direction normalized
+}
+```
+Shape choice (document in header + design.md): MIL-F-8785C discrete-gust 1-cos profile, applied rise-and-fall over `duration` (frozen in time, spatial gradients neglected per PRD §5.4).
+- [ ] Tests: `ConstantOnly`, `GustZeroBeforeAndAfter`, `GustPeakAtMidpoint` (= amplitude·dir ± 1e-15), `GustContinuous` (value at t0 and t0+T is 0), `DirectionNormalized`.
+
+### Task 4.5 (detailed): F-16 model + flight-variable chart
+
+**Files:** Create `src/flightsim/aircraft/f16_model.hpp/.cpp`, `src/flightsim/analysis/flight_vars.hpp/.cpp`; Test `tests/unit/test_f16_model.cpp`, `tests/unit/test_flight_vars.cpp`.
+**Interfaces (Produces):**
+```cpp
+namespace flightsim {
+namespace ac { inline constexpr int kPower = 13, kDe = 14, kDa = 15, kDr = 16, kN = 17; }
+struct F16Input { double throttle = 0, de = 0, da = 0, dr = 0; };   // throttle [0,1]; surfaces rad (S&L signs)
+struct F16Model {
+  F16Data data; double xcg = 0.35;
+  AtmosphereKind atm = AtmosphereKind::SlAdc; GravityModel grav;   // caller sets grav.g0 (S&L: data.g_sl)
+  WindModel wind; bool actuators = false; bool include_rotor = true;
+  LookupMonitor* monitor = nullptr;                                 // diagnostics only
+  struct Eval { ForceMoment fm; double V, alpha, beta, mach, qbar, thrust, power_cmd; Vec<4> surfaces; };
+  Eval evaluate(double t, const Vec<17>& x, const F16Input& u) const;   // aero + thrust, non-gravitational
+  Vec<17> deriv(double t, const Vec<17>& x, const F16Input& u) const;   // rigid_body_deriv on first 13 + engine + actuators
+  MassProps mass_props() const;     // inertia tensor FRD with off-diagonals −Ixz; h_rotor = (hx,0,0) if include_rotor
+};
+// x13 = [V, alpha, beta, phi, theta, psi, p, q, r, pN, pE, h, P]  (S&L order; SI; V air-relative)
+Vec<17> x17_from_x13(const F16Model&, const Vec<13>& x13, const F16Input& u, double t = 0);   // actuators set to u
+Vec<13> x13_from_x17(const F16Model&, const Vec<17>& x, double t = 0);
+Vec<13> f13(const F16Model&, const Vec<13>& x13, const F16Input& u, double t = 0);   // assumes steady wind
+}
+```
+Model content = S&L Appendix A as described in `data/f16/SOURCES.md` and the `F16Data` header: Cx, Cy, Cz, Cl+DLDA·δa/norm+DLDR·δr/norm, Cm, Cn+…; damping added with `q·cbar/(2V)` and `p,r·b/(2V)`; CG transfer `Cm += Cz_total·(xcg_ref − xcg)`, `Cn −= Cy_total·(xcg_ref − xcg)·cbar/b` (totals after damping); forces `q̄S·C`, moments `q̄Sb·Cl`, `q̄S·cbar·Cm`, `q̄Sb·Cn`; thrust along +x_B from the power-level interpolation between idle/mil/max tables at (h, Mach); engine `Ṗ` with throttle gearing, rtau and the 50 % transition logic; actuators when enabled: `δ̇ = clamp(lag·(clamp(cmd, limits) − δ), ±rate)`, else surfaces = commands and actuator-state derivatives = 0. Air data from `v_air,B = C_BN (v_N − wind_N(t))`. Gravity `g_N = (0,0,grav.gravity(h))`. `f13` maps body accelerations to `V̇, α̇, β̇` (S&L formulas) and body rates to Euler rates via `euler_rate_matrix`.
+- [ ] Tests (`test_flight_vars.cpp`): `RoundTripX13`, `F13EulerRatesMatchFiniteDifference` (vs FD of `x13_from_x17` along `deriv`, 1e-7).
+- [ ] Tests (`test_f16_model.cpp`): `A1CheckCase` — model with xcg 0.4, SlAdc, `grav.g0 = data.g_sl`, R = ∞, rotor on, actuators off; inputs from `data/f16/reference_values.toml [A1]` (load in test with toml++); compare all 13 `f13` components (converted back to ft, ft/s, percent) with `[A1.expected]` at ≤ 1e-3 rel, print each relative error, and mark any > 1e-4 with `ADD_FAILURE() << "investigate"` disabled behind a documented list (the Archimedes reproduction itself differs by ~8e-5 on ẇ); also compare `[A1.body_axes]` u̇,v̇,ẇ. Sign tests: `PositiveElevatorNoseDown` (ΔCm < 0), `PositiveAileronLeftRoll` (ΔL < 0), `PositiveRudderLeftYaw` (ΔN < 0), `PitchDampingNegative` (∂Cm/∂q < 0 at α = 5°), `ThrustIncreasesWithThrottle`, `EnginePowerLagTransitions` (P approaches command; crossing 50 % uses targets), `ActuatorRateAndPositionLimits`, `ZeroAirspeedDoesNotNaN` (V = 0 → finite derivative, documented behavior), `MonitorFlagsOutOfTableAlpha` (α = 50°).
+
+### Task 4.6 (detailed): Aircraft consistency laws + convergence
+
+**Files:** Test `tests/validation/test_f16_consistency.cpp`.
+Common run: x0 at h = 3048 m (10,000 ft), V = 152.4 m/s (500 ft/s), α = 0.0594 rad, θ = α, throttle 0.1678, δe = −0.6531° (near-trim values from the Archimedes tutorial; not a reference), xcg 0.35, SlAdc, `g0 = data.g_sl`; elevator doublet ±1° (1–2 s, 2–3 s) and aileron doublet ±2° (5–6 s, 6–7 s), events on step boundaries; RK4. Every run asserts `monitor.out_of_domain == false`.
+- [ ] `B1WorkEnergy`: augmented state `[x17 | W_nc]`, `Ẇ_nc = (C_NB F_B)·v_N + M_B·ω_B`, `E = ½m|v_N|² + ½ωᵀIω + m·g0·h`: 60 s at dt = 0.01 → `|ΔE − W_nc|/max|ΔE|` < 1e-6; also at dt = 0.02 / 0.04 shows decrease with observed order printed.
+- [ ] `B2AngularImpulse`: augmented `[x17 | J_N]`, `J̇_N = C_NB M_B`; `H_N = C_NB(Iω + h_rotor)`; `‖ΔH_N − J_N‖/max‖ΔH_N‖` < 1e-6 at dt = 0.01.
+- [ ] `S1MirrorSymmetrized`: test-only copy of data with DLDA/DLDR/DNDA/DNDR replaced by their β-even part `(T(α,β)+T(α,−β))/2`, `include_rotor = false`, ±2° aileron doublets from wings-level: lateral states (β, p, r, φ, ψ, pE) exact negatives and longitudinal identical ≤ 1e-12 rel over 10 s. `S1ProductionAsymmetryReported`: same with real data and rotor on → print max asymmetry (no assertion).
+- [ ] `W1GalileanInvariance`: constant wind (10, −5, 0) m/s; v_N0 shifted by the wind; air-relative states (V, α, β, p, q, r, φ, θ, ψ, h) equal the no-wind run ≤ 1e-9 rel over 20 s; ground track offset = w·t ≤ 1e-6 m.
+- [ ] `AircraftConvergenceMeasured`: RK4 with h = 0.04 … 0.0025 against an h/16 RK4 reference over 10 s of the doublet run; print observed order on position and attitude; assert 0.9 ≤ order ≤ 4.2 only (PRD §6.3: reduced order expected from non-smooth tables; explanation goes in results.md).
+
+**Accept (M4):** PRD §13 M4 — A1 within tolerance; B1/B2/S1/W1 pass; aircraft convergence order measured and printed.
+
+### (superseded heading) Tasks 4.4–4.6 interface sketch
 - 4.2 `aircraft/f16_data.{hpp,cpp}`: `F16Data load_f16_data(path)` (SI-converted), `math/interp.hpp`: `Table1D`, `Table2D` with S&L one-cell linear extrapolation, `LookupMonitor` (out-of-domain flag + optional breakpoint-cell record). Tests: exact at breakpoints, linear between, extrapolation, monitor.
 - 4.3 `env/atmosphere.{hpp,cpp}`: `enum class AtmosphereKind { SlAdc, Us76 }`, `struct AtmState { double rho, T, p, a; }`, `AtmState atmosphere(AtmosphereKind, double h_m)`; `GravityModel { double g0; double R = inf; double gravity(double h) const; }`. Tests per §10.2.
 - 4.4 `aircraft/f16_model.{hpp,cpp}`: `struct F16Input { double throttle, de, da, dr; }` (rad), `struct F16Model { F16Data data; AtmosphereKind atm; GravityModel grav; WindModel wind; bool actuators; double xcg; Vec<17> deriv(double t, const Vec<17>& x, const F16Input& u) const; ForceMoment forces(...) const; }`; `analysis/flight_vars.{hpp,cpp}`: x13 ↔ model-state maps, `Vec<13> f13(const F16Model&, const Vec<13>& x13, const F16Input& u)`.

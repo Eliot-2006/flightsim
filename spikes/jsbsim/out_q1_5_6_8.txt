@@ -1,0 +1,14 @@
+jsbsim 1.3.3
+     JSBSim Flight Dynamics Model v1.3.3 [GitHub build 2002/commit 66f7fafc07fe13e7ede9db20873030fed2881713] Oct 16 2026 00:36:17
+            [JSBSim-ML v2.0]
+Q1 loaded model: toy | root: /Users/eliotboda/.paradev/worktrees/flightsim/spike-jsbsim/spikes/jsbsim
+Q8 inertia/ixz-slugs_ft2 = -982.0 (file value +982, negated_crossproduct_inertia=false)
+   ixx,iyy,izz = 9496.0 55814.0 63100.0
+   weight lbs = 20500.0  cg-x-in (struct) = 100.0
+Q5 trim: alpha_deg=2.7470 theta_deg=2.7470 pitch_trim=-0.04589 elev_pos_rad=-0.01836 throttle=0.18025
+   udot,wdot,qdot = -2.44e-15 -1.93e-04 4.00e-16
+   10 s after trim: dh=0.572 ft, V=499.965
+Q6 direct: aero/de-total=0.1000 (fcs pos=0.0000, direct=0.1)
+   q after 0.5 s with direct de=+0.1: -0.33667 rad/s (negative = nose-down, Cm de coeff -1.0)
+   write fcs/elevator-pos-rad=0.1 then run: reads back 0.0000 (component overwrites output -> overwritten)
+   cmd 0.25 -> pos 0.1000 rad (range +-0.4)

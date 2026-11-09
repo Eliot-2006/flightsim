@@ -5,7 +5,7 @@
 | Status | Draft for approval |
 | Date | 2026-11-08 |
 | Owner | Eliot Boda |
-| Language / build | C++20, CMake ≥ 3.25 |
+| Language / build | C++20, CMake ≥ 3.28 |
 | Next step after approval | Implementation plan per milestone (superpowers:writing-plans) |
 
 ---
@@ -324,7 +324,9 @@ Cases:
 | J1 | Point check: JSBSim initialized at our trim state; report JSBSim's initial accelerations | `|u̇|,|ẇ|` < 1e-3 ft/s², `|q̇|` < 1e-5 rad/s² (initial targets; exceeding them blocks progress until root-caused) |
 | J2 | Each simulator's own trim at the same (V, h) | α, δe, throttle agree within 0.1 % (or explained) |
 | J3 | Open-loop responses from each simulator's own trim, 20 s: elevator doublet, aileron pulse, rudder doublet | Compare deviations from trim (ΔV, Δα, Δq, Δθ, Δh, Δβ, Δp, Δr, Δφ). Target: max difference ≤ 2 % of each signal's peak deviation |
-| J4 (appendix) | JSBSim stock `f16` at a matched condition | Trim values and, if surfaces can be driven directly (bypassing its FCS), open-loop responses. Reported as **model-form** difference; no pass/fail beyond "runs and is explained" |
+| J4 (appendix) | JSBSim stock `f16` at a matched condition | Trim values only: the M4.0 spike showed the stock FCS overwrites direct surface commands, so open-loop responses would require editing a copy of the GPL model (out of scope). Reported as **model-form** difference; no pass/fail beyond "runs and is explained" |
+
+**Amendment from the M4.0 spike (2026-11-08, `spikes/jsbsim/FINDINGS.md`, jsbsim 1.3.3):** the primary approach is feasible (custom planet via `fdm.load_planet`, `simulation/gravity-model = 0`, `negated_crossproduct_inertia="false"`, direct surface drive, JSBSim trim). JSBSim has no RK4; its integrators are set explicitly (recorded in metadata) and its own discretization error is bounded by comparing two small steps (e.g. 1/2400 s and 1/4800 s). Matched-model trim requires a dummy zero-power engine so FGTrim can vary throttle, with thrust supplied by the external force.
 
 **Discrepancy budget** (required section in `docs/results.md`): each candidate source (gravity model, curvature, atmosphere implementation, table edge handling, integrator, sampling alignment, residual trim error) is toggled or bounded individually and its contribution to J3 differences quantified. Remaining unexplained difference must be stated plainly.
 
@@ -465,6 +467,8 @@ All cases in §8.2–§8.5 and J-series criteria are encoded as tests with the t
 | Lie–Euler, RKMK4 | R2, R3 | R1 (exact for constant ω: error at roundoff, no asymptotic window); T* (reduce to Euler/RK4) |
 
 Additionally asserted: RK4/RKMK4 on R1 reproduce the exact solution to ≤ 1e-12 rad (RKMK4) and show order 4 (RK4).
+
+**Amendment (M2 finding, 2026-11-08):** on R1 (constant ω about a principal axis), Euler *with* renormalization has observed **attitude** order 2, not 1. Each step multiplies q by `(1 + ½hω)`, whose normalized form is an exact rotation about ω by `2·atan(h|ω|/2)`, so only the angle magnitude is wrong, at O(h³) per step. Euler's first-order behavior on R1 is therefore asserted on the unprojected quaternion norm error; the attitude order is reported, and explained in `docs/design.md`.
 
 ### 10.4 Tolerance policy
 Every tolerance carries a comment giving its origin: analytic error bound, observed error × safety factor (≤ 10×), or published precision. Changing a tolerance requires updating that comment and `docs/design.md`.
