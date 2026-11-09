@@ -341,8 +341,10 @@ def csv_matches(a, b):
         diff = ca[k] - cb[k]
         if k.endswith("_deg"):
             diff = (diff + 180.0) % 360.0 - 180.0
+        # allowed = CSV_REL x max(peak, floor) + a round-off allowance 1e-6 x floor (e.g. 1e-12 deg): unexcited
+        # lateral channels differ across platforms at the 1e-14 deg level.
         scale = max(np.abs(cb[k]).max(), _floor(k))
-        err = float(np.abs(diff).max() / scale)
+        err = float(np.abs(diff).max() / (scale + 1e-6 * _floor(k) / CSV_REL))
         if not err <= CSV_REL:
             bad.append((k, err))
     return bad

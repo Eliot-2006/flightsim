@@ -7,6 +7,22 @@ import numpy as np
 from control_design import design
 
 
+def _assert_close(a, b, path="gains"):
+    assert type(a) is type(b) or (isinstance(a, (int, float)) and isinstance(b, (int, float))), path
+    if isinstance(a, dict):
+        assert a.keys() == b.keys(), path
+        for k in a:
+            _assert_close(a[k], b[k], f"{path}.{k}")
+    elif isinstance(a, list):
+        assert len(a) == len(b), path
+        for i, (x, y) in enumerate(zip(a, b)):
+            _assert_close(x, y, f"{path}[{i}]")
+    elif isinstance(a, (int, float)) and not isinstance(a, bool):
+        assert np.isclose(a, b, rtol=1e-9, atol=0.0), f"{path}: {a} != {b}"
+    else:
+        assert a == b, path
+
+
 def test_committed_gains_meet_c5():
     gains = tomllib.loads(design.GAINS.read_text())
     plant = design.load_plant()
@@ -31,7 +47,9 @@ def test_reproducible_outputs(tmp_path):
     second = tmp_path / "second"
     design.generate(first)
     design.generate(second)
-    assert (first / "autopilot_gains.toml").read_bytes() == design.GAINS.read_bytes()
+    # Committed vs regenerated: numerically equal. Bitwise identity holds on one platform (asserted below), but
+    # LAPACK/libm differ across platforms in the last digits, so the committed file is compared at 1e-9 relative.
+    _assert_close(tomllib.loads((first / "autopilot_gains.toml").read_text()), tomllib.loads(design.GAINS.read_text()))
     for name in ("autopilot_gains.toml", "linear_steps.json", "margins.json"):
         assert (first / name).read_bytes() == (second / name).read_bytes()
     responses = json.loads((first / "linear_steps.json").read_text())
