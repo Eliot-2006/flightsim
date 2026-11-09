@@ -3,7 +3,7 @@
 Living log for the 6-DOF flight dynamics simulator. Spec: `docs/PRD.md`. Plan: `docs/superpowers/plans/2026-11-08-flightsim.md`.
 
 ## Current milestone
-M8 (stock JSBSim appendix J4 + final polish) next. Done: M0–M7.
+M8 (J4 appendix, F-16 benchmarks, demo CI, final docs) IN PROGRESS, plus review fixes. Done: M0–M7. **Paused risk: Claude 5h limit at 98 % (resets 21:40 PT); Codex resets 22:00 PT.**
 
 ## Orchestration
 | Task | Track | Agent (model) | Branch / workspace | Status | Result |
@@ -16,6 +16,8 @@ M8 (stock JSBSim appendix J4 + final polish) next. Done: M0–M7.
 | M6a JSBSim model generator | F | Claude (Sonnet) | m6a-jsbsim-model | completed, merged | Independent Python S&L evaluation vs JSBSim aero/thrust/mass ≤1e-9 rel; JSBSim trims at 0 and 10k ft; results at dt 1/2400 and 1/4800 committed |
 | M6b runner + JSBSim J1–J3 + budget | F | Claude (Sonnet) | m6b-jsbsim-compare | completed, merged | J1 pass (ẇ offset = US76 ρ difference); J2 ≤ 1.7e-5 rel; J3 max 1.26 % (limit 2 %); remainder ≈ JSBSim's own dt-halving effect (~0.3 %) |
 | M7a PID + linear design | G | Codex (gpt-6.1-sol, high) | m7a-pid-design | completed, merged | Linear C1: 4.3 % OS, 16.3 s settle, 3.0 ft/s; C3: 4.3 % OS, 4.2 ft; C5 GM ≥ 18 dB, PM ≥ 52° all loops (one airspeed→pitch cross-feed) |
+| M8 polish | H | Claude (Sonnet, high) | m8-polish (workspace e06ef038) | in progress, uncommitted work in worktree | J4, F-16 benchmarks, demo/coverage CI, README/design/results final |
+| Independent review | — | Claude (Opus) — Gemini CLI unusable ("client no longer supported… migrate to Antigravity"), Antigravity not installed | review-gemini (workspace 4a626558) | review done; fixing findings 1–5, uncommitted | 6 findings, none in physics/maths; see below |
 | M7b autopilot closed loop | G | Claude (Sonnet, high) | m7b-autopilot | completed, merged | C1 4.47 % / 16.45 s / 3.19 ft/s (linear 4.30 % / 16.3 s); C2 AW 3.08 % / 21.2 s vs no-AW 4.61 % / 90.5 s; C3 4.22 %, 4.88 ft; C4 gust 17.1 ft; B1 closed-loop 1e-9 |
 | M5 trim + linearization | E | Codex (gpt-6.1-sol, high) | m5-trim-linear | completed, merged | TR1: throttle +3.5e-5, δe +2e-5°, α +9e-7 rad (level_35); LN1 eigenvalue diffs ≤3.4e-4 1/s; LN2 ratio 96.3; LN3 ε=6e-6 flat |
 | 4.2–4.3 interp, data loader, atmosphere | D | Claude (Sonnet) | m4a-data-atmos | completed, merged | 75 tests at merge; US76 vs NASA-TM-X-74335 ≤1e-4 |
@@ -71,5 +73,11 @@ _(orchestrator-run checks only; worker claims are not recorded here until re-run
 - Codex 5h limit hit during M4b → kept model, resumed after reset.
 - JSBSim has no RK4; stock f16 FCS overrides direct surface writes → PRD §8.6 amendment (J4 trim-only).
 
-## Remaining work
-M0–M8 per plan.
+## Independent review (Claude Opus, 2026-11-08 19:14)
+No physics/maths defects found; JSBSim comparison judged fair. Findings: (1) PID back-calculation with ki = 0 leaves a non-decaying bias (pid.cpp:40) — fix + test; (2) TR1 test tolerance 0.5 % vs ~3e-4 observed — tighten to a regression bound; (3) LN1 1 % vs 2.3e-4 observed — tighten; (4) pitch-rate anti-windup tracks commanded rather than rate-limited actual elevator (C2: −25° commanded, −14.7° reached) — track the actuator state; (5) S&L pressure constant 1715 is S&L's own (pressure unused by dynamics) — document; (6) README stale — handled in M8. Note: JSBSim J-cases fix xcg = 0.35 and rotor off; the CG transfer is cross-checked at point level by test_gen_xml (xcg ≠ xcg_ref state), the rotor only by A1.
+
+## Remaining work (exact next steps)
+1. **M8 worker** (workspace e06ef038, branch m8-polish, terminal c0e7ba4a): finish coverage decision, Linux-container demo, final macOS demo, commit. If its session stopped at the quota limit: after 21:40 PT send "continue" to the same terminal (context preserved), or start a fresh Sonnet worker with scratchpad prompt m8.txt on the same branch (uncommitted changes are in the worktree).
+2. **Review fixes** (workspace 4a626558, branch review-gemini, terminal 5a6719ae): finish findings 1–5, rerun C1–C4, commit. Same resume rule.
+3. Orchestrator: verify each branch (release/dev ctest, GCC 13 container, pytest, jsbsim compare --check, demo.sh), merge review-gemini first, then m8-polish (regenerate README/results after both), push, confirm CI green incl. sanitizers/jsbsim/demo jobs.
+4. Final Definition-of-Done audit against the user's 10 criteria; final summary. The owner merges PR #2 (branch → main) themselves.

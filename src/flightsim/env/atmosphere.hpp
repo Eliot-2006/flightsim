@@ -16,8 +16,8 @@ struct AtmState {
 // (and for NaN).
 //  SlAdc: Stevens & Lewis `adc` routine -- tfac = 1 - 0.703e-5 h_ft; T = 519 tfac degR (390 degR at h >=
 //  35,000 ft);
-//         rho = 2.377e-3 tfac^4.14 slug/ft^3; a = sqrt(1.4 * 1716.3 * T) ft/s; p = rho * 1716.3 * T.
-//         Converted to SI.
+//         rho = 2.377e-3 tfac^4.14 slug/ft^3; a = sqrt(1.4 * 1716.3 * T) ft/s; p = 1715 * rho * T (the
+//         routine's own pressure constant; p is output-only, unused by the dynamics). Converted to SI.
 //  Us76:  U.S. Standard Atmosphere 1976, layers 0-11 km (-6.5 K/km) and 11-20 km (isothermal) in geopotential
 //         altitude H = r0 h / (r0 + h), r0 = 6,356,766 m.
 AtmState atmosphere(AtmosphereKind kind, double h_m);

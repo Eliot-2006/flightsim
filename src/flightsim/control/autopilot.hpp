@@ -19,6 +19,9 @@ AutopilotGains load_autopilot_gains(const std::filesystem::path&);
 
 struct ApMeasurement {
   double h, V, theta, q;  // altitude [m, up], AIR-relative speed [m/s], pitch [rad], body pitch rate [rad/s]
+  // Elevator position actually applied [rad]: the actuator state (it includes the rate limit and lag), or the
+  // held command with ideal surfaces. The pitch-rate PI's back-calculation tracks it.
+  double de;
 };
 struct ApCommand {
   double h, V;  // [m], [m/s]
@@ -34,7 +37,8 @@ struct ApOutput {
 //   down) throttle  = PI(V_cmd - V)                                                 limited to [0,1]
 // `update` is one controller sample of period 1/rate_hz; the caller holds the returned inputs until the next
 // sample. The ±15 deg bound applies to the COMBINED theta_cmd, so the altitude PI's back-calculation tracks
-// that final bound (not only its own).
+// that final bound (not only its own). The pitch-rate PI's back-calculation tracks the measured elevator
+// (ApMeasurement::de), so a rate-limited actuator lagging a saturated command does not wind it up.
 class Autopilot {
  public:
   Autopilot(const AutopilotGains&, bool antiwindup);

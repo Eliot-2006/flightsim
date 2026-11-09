@@ -15,6 +15,8 @@ namespace {
 
 // Rankine -> kelvin, used only to express the S&L (imperial) hand-evaluated references in SI.
 constexpr double kK_per_R = 5.0 / 9.0;
+// S&L adc pressure constant (PS = 1715 RHO T); not a data-file constant, the routine hard-codes it.
+constexpr double kSlPressureGasConst = 1715.0;
 
 struct Imperial {
   double h_ft, rho_slug_ft3, T_R, a_fts, p_lbf_ft2;
@@ -59,14 +61,16 @@ TEST(Atmosphere, Us76MatchesStandardTable) {
 }
 
 // Hand-evaluated S&L adc: tfac = 1 - 0.703e-5 h_ft; T = 519 tfac degR (390 degR for h >= 35,000 ft);
-// rho = 2.377e-3 tfac^4.14 slug/ft^3; a = sqrt(1.4 * 1716.3 * T) ft/s; p = rho * 1716.3 * T lbf/ft^2.
-// Tolerance 1e-12 relative: literals carry 14+ digits; the slack covers pow/sqrt rounding and unit
-// conversion.
+// rho = 2.377e-3 tfac^4.14 slug/ft^3; a = sqrt(1.4 * 1716.3 * T) ft/s; p = 1715 * rho * T lbf/ft^2 (the
+// routine's own pressure constant). These literals are the S&L formulas evaluated offline, so the test
+// reproduces the routine by construction: it pins the transcription, it is not an independent atmosphere
+// check (p is output-only; the dynamics use rho and a). Tolerance 1e-12 relative: literals carry 14+ digits;
+// the slack covers pow/sqrt rounding and unit conversion.
 TEST(Atmosphere, SlAdcMatchesRoutine) {
   const Imperial refs[] = {
-      {0.0, 0.002377, 519.0, 1116.7200096711797, 2117.3358069},
-      {10000.0, 0.0017577961215513001, 482.5143, 1076.7520653920287, 1455.7000374978372},
-      {40000.0, 0.0006058799557951511, 390.0, 968.0391521007815, 405.54998957117493},
+      {0.0, 0.002377, 519.0, 1116.7200096711797, 2115.7320449999997},
+      {10000.0, 0.0017577961215513001, 482.5143, 1076.7520653920287, 1454.5974272031644},
+      {40000.0, 0.0006058799557951511, 390.0, 968.0391521007815, 405.2428084335868},
   };
   for (const Imperial& r : refs) {
     const AtmState want = to_si(r);
@@ -90,7 +94,8 @@ TEST(Atmosphere, SlAdcConstantsMatchDataFile) {
     const double tfac = 1.0 - c.altitude_factor * h_ft;
     const double T_R = h_ft >= c.break_altitude ? c.temperature_high : c.temperature0 * tfac;
     const double rho = c.rho0 * std::pow(tfac, c.density_exponent);
-    const Imperial r{h_ft, rho, T_R, std::sqrt(c.gamma * c.gas_constant * T_R), rho * c.gas_constant * T_R};
+    const Imperial r{h_ft, rho, T_R, std::sqrt(c.gamma * c.gas_constant * T_R),
+                     kSlPressureGasConst * rho * T_R};
     const AtmState want = to_si(r);
     const double h_m = h_ft * units::ft;
     if (h_m > 20000.0) continue;  // atmosphere() range ends at 20 km; 50,000 ft is above it

@@ -31,7 +31,11 @@ void check(const char* name, double cg) {
   for (const auto& [key, value] : std::vector<std::pair<const char*, double>>{
            {"alpha", tr.alpha}, {"throttle", tr.throttle}, {"elevator", tr.de / units::deg}}) {
     const double published = t[key]["value"].value<double>().value();
-    // TR1: one last printed digit or 0.5% relative, whichever is larger (Task 5.1).
+    // PRD 8.5 TR1 acceptance: within 1 in the last printed digit or 0.5 % relative, whichever is larger.
+    // This test enforces the tighter regression bound max(2 x observed, 1 in the last printed digit). Every
+    // observed difference is below one printed digit (largest: level_30 elevator, 4.76e-4 deg against a
+    // 1e-3 digit, i.e. 0.48 digit), so the bound is the last printed digit itself. The 0.5 % term would let a
+    // 17x larger error through (worst observed relative difference 2.8e-4, level_38 throttle).
     const double digit = std::string(key) == "alpha"      ? 1e-5
                          : std::string(key) == "throttle" ? 1e-4
                          : cg == 0.30                     ? 1e-3
@@ -39,7 +43,7 @@ void check(const char* name, double cg) {
     const double difference = value - published;
     std::cout << std::setprecision(12) << "TR1 " << name << ' ' << key << " ours=" << value
               << " published=" << published << " difference=" << difference << '\n';
-    EXPECT_LE(std::abs(difference), std::max(digit, 0.005 * std::abs(published)));
+    EXPECT_LE(std::abs(difference), digit);
   }
 }
 }  // namespace
