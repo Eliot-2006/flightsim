@@ -3,7 +3,7 @@
 Living log for the 6-DOF flight dynamics simulator. Spec: `docs/PRD.md`. Plan: `docs/superpowers/plans/2026-11-08-flightsim.md`.
 
 ## Current milestone
-M4b (F-16 model, Tasks 4.4–4.6) in progress. Done: M0, M1, M2 (MVP), M3 (resume-ready core), M4.0–4.3. Next: M5 (planned in detail).
+M5 (trim + linearization) next; M6a (JSBSim model generator) running. Done: M0–M4.
 
 ## Orchestration
 | Task | Track | Agent (model) | Branch / workspace | Status | Result |
@@ -12,7 +12,8 @@ M4b (F-16 model, Tasks 4.4–4.6) in progress. Done: M0, M1, M2 (MVP), M3 (resum
 | M1 rigid-body core | A | Claude (Sonnet) | m1-core | completed, merged | 52 tests; T2 orders Euler 1.0015 / RK4 4.009; T5 catches transposed DCM and left-multiplication |
 | M2 rotational + integrators | A | Codex (gpt-6.1-sol, high) | m2-rotational | completed, merged | 88 tests; 32/32 asserted orders in bounds (Euler ≈1.00–1.05, RK4/RKMK4 ≈4.00–4.01, symplectic 1.01) |
 | M3 tooling, report, docs | A | Claude (Sonnet) | m3-tooling | completed, merged | demo.sh 28 s from clean clone; 113 tests; contrast ≥3:1 enforced by test |
-| M4b wind, F-16 model, consistency | D | Codex (gpt-6.1-sol, high) | m4b-f16-model | running (paused once at Codex 5h limit) | — |
+| M4b wind, F-16 model, consistency | D | Codex (gpt-6.1-sol, high) | m4b-f16-model | completed, merged | A1 all 13 components ≤ 2e-4 rel (ṗ/ṙ gap = S&L rounded inertia coefficients); B1/B2 residuals 6e-11/3e-10 (order 4.0); S1 symmetrized 2e-16; aircraft RK4 order ≈2.2 |
+| M6a JSBSim model generator | F | Claude (Sonnet) | m6a-jsbsim-model | running | — |
 | 4.2–4.3 interp, data loader, atmosphere | D | Claude (Sonnet) | m4a-data-atmos | completed, merged | 75 tests at merge; US76 vs NASA-TM-X-74335 ≤1e-4 |
 | 4.0 JSBSim spike | B | Claude (Sonnet) | spike-jsbsim | completed, merged | Primary §8.6 approach feasible (jsbsim 1.3.3); see spikes/jsbsim/FINDINGS.md |
 | 4.1 F-16 data + reference values | C | Codex (gpt-6.1-sol) | f16-data | completed, merged | 3 sources (AeroBench, Archimedes, UMN) + TP-1538 visual checks; 22 raw-A cells resolved; A1/TR1/LN1 single-lineage (Archimedes) |
@@ -30,6 +31,7 @@ _(orchestrator-run checks only; worker claims are not recorded here until re-run
 - 2026-11-08 M0: clean `release` configure+build+ctest in m0 worktree: 3/3 pass; `uv run pytest`: 1 passed.
 - 2026-11-08 M1: release build, ctest 52/52 (41 unit, 11 validation); CLI run writes CSV+JSON; reviewed quat/EOM/RK4 by hand. CI (Linux gcc/clang dev+release, asan, format, python, bench) green on M0 commit.
 - 2026-11-08 M2+M4a merged: integration release build ctest 111/111 (75 unit, 36 validation); `flightsim converge` orders.json re-generated and inspected.
+- 2026-11-08 M4: integration release ctest 139/139 (AppleClang) and 139/139 (GCC 13 container).
 - 2026-11-08 M3: fresh clone `scripts/demo.sh` exit 0 in 28.4 s, 113/113 tests; figures inspected (convergence slopes, R4 flip with constant H_N).
 - 2026-11-08 Local GCC 13 container check (`gcc_check.sh`) added to the merge routine; integration branch passes.
 - 2026-11-08 CI: gcc-13 failed on -Wdangling-else in a test (fixed d8849c9); macos-14 runner label unsupported → macos-15.
@@ -50,6 +52,7 @@ _(orchestrator-run checks only; worker claims are not recorded here until re-run
 - Codex workers can stall on a first-run 'Trust this folder?' prompt → orchestrator checks each Codex terminal right after launch and answers it.
 - GCC-only -Wdangling-else failures from unbraced gtest macros (twice) → braced; worker rules updated; local GCC 13 container check before every merge.
 - CMake 3.25.1 mis-parses `SYSTEM` in FetchContent_Declare → minimum raised to 3.28 (tested in CI and container).
+- M4b BLOCKED (correctly): planned 60 s open-loop fixture left the α table domain at 25 s; same-method 1e-3 reference rule infeasible for the non-smooth aircraft → PRD amended (20 s in-domain run; 10× reference rule for aircraft; 60 s closed-loop budget check in M7).
 - Codex 5h limit hit during M4b → kept model, resumed after reset.
 - JSBSim has no RK4; stock f16 FCS overrides direct surface writes → PRD §8.6 amendment (J4 trim-only).
 
