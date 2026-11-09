@@ -1,5 +1,7 @@
 # 6-DOF Flight Dynamics Simulator Implementation Plan
 
+> **Status (2026-11-09): implemented.** This is the original plan, kept as a historical record; later amendments live in `docs/PRD.md` and the outcome in `PROGRESS.md` and `docs/results.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Use superpowers:test-driven-development for every task: failing test first, then code.
 
 **Goal:** Implement the approved PRD: a validated C++20 6-DOF rigid-body + F-16 flight dynamics simulator with convergence studies, trim/linearization, JSBSim cross-validation, and an altitude/airspeed autopilot.

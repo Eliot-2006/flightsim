@@ -19,7 +19,7 @@ A C++20 rigid-body and F-16 flight simulator built to be **checked, not just run
 - **Flight mechanics.** Trim solver, numerical linearization and modal analysis (short period, phugoid, Dutch roll, roll, spiral). Trim matches published values within 0.028 %, and eigenvalues within 0.28 %.
 - **Control.** Cascaded altitude and airspeed autopilot with actuator limits and anti-windup. Designed on the linear model (margins ≥ 18 dB and 53°) and verified on the nonlinear model: a +100 ft step settles in 16 s with 4.4 % overshoot.
 - **Independent validation.** Closed-form solutions (including Jacobi elliptic functions for torque-free rotation), energy and angular-momentum balances, published reference data, and a matched-model JSBSim comparison with a quantified discrepancy budget.
-- **Engineering.** Zero heap allocation in the step loop and 8488× real time on a 60 s closed-loop F-16 run. CI covers GCC, Clang and AppleClang, ASan and UBSan, gated line coverage, and a one-command reproducible demo.
+- **Engineering.** Zero heap allocation in the step loop and 9474× real time on a 60 s closed-loop F-16 run. CI covers GCC, Clang and AppleClang, ASan and UBSan, gated line coverage, and a one-command reproducible demo.
 
 **Stack:** C++20 · Eigen · CMake · GoogleTest · Google Benchmark · Python (NumPy, SciPy, python-control, Plotly) · JSBSim · GitHub Actions
 
@@ -54,7 +54,7 @@ The last column names the test or scenario that produces each number. Bounds are
 | Autopilot C1, +100 ft step: overshoot and 2 % settling time | 4.36 %, 16.4 s | 10 %, 25 s | [`f16_ap_c1_alt100.toml`](scenarios/f16_ap_c1_alt100.toml), `F16Autopilot.C1AltitudeStep100ft` |
 | Autopilot C2, +1,000 ft step: settling time with and without anti-windup | 21.2 s and 90.5 s | 120 s, and no worse than without | [`f16_ap_c2_alt1000.toml`](scenarios/f16_ap_c2_alt1000.toml), `F16Autopilot.C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup` |
 | Stock JSBSim `f16` against ours at the same trim, thrust (sea level; 10,000 ft) | +30 %; +24 % (a model-form difference) | none | [`stock_f16.py`](python/jsbsim_compare/stock_f16.py) |
-| F-16 RK4 step; 60 s closed-loop run | 1099 ns; 8488× real time | PRD §11 targets, reported not gated | [`bench_f16.cpp`](bench/bench_f16.cpp) |
+| F-16 RK4 step; 60 s closed-loop run | 967 ns; 9474× real time | PRD §11 targets, reported not gated | [`bench_f16.cpp`](bench/bench_f16.cpp) |
 
 ## Four figures
 
@@ -82,7 +82,7 @@ JSBSim flies an aircraft generated from the same data file as ours, on a non-rot
 
 A +1,000 ft step saturates the pitch command. With back-calculation anti-windup the altitude overshoots 3.06 % and settles in 21.2 s; without it, 4.61 % and 90.5 s. The gains come from a linear design (loop margins at least 18 dB and 53°) and were not tuned on the nonlinear model. Produced by [`f16_ap_c2_alt1000.toml`](scenarios/f16_ap_c2_alt1000.toml) and its [no-anti-windup twin](scenarios/f16_ap_c2_alt1000_nowindup.toml).
 
-The interactive report with every other figure (work–precision, quaternion norm, LN2 and LN3, all JSBSim overlays, C1–C4 and actuator usage) is `out/index.html` after a run.
+Every other figure is in the [interactive report](https://eliot-2006.github.io/flightsim/), rebuilt by CI on each push to main and also written to `out/index.html` by `scripts/demo.sh`. It includes all JSBSim overlays, a rotatable 3D view of the F-16's path and attitude taken from the simulator's own output, the trim and linearization checks, the autopilot responses C1–C4 with actuator usage, and the integrator studies.
 
 ## Quickstart
 

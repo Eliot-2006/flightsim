@@ -153,3 +153,14 @@ def test_bench_table_puts_target_beside_measurement_and_states_a_miss():
     m["bench.f16.BM_F16Deriv.ns"] = 401.0  # PRD 11 target is 400 ns
     t = metrics.bench_f16_table(m)
     assert t["bench.f16.misses"] == 1 and "**missed**" in t["bench.f16.table"] and "≤ 400 ns" in t["bench.f16.table"]
+
+
+def test_every_figure_is_in_exactly_one_chapter():
+    placed = [fid for _, _, _, figs in report.CHAPTERS for fid, _ in figs]
+    assert sorted(placed) == sorted(f.id for f in plots.FIGURES)  # a new figure must be given a chapter and a nav label
+
+
+def test_chapter_intros_render_from_metrics():
+    m = json.loads(FIXTURE.read_text())
+    for _, _, intro, _ in report.CHAPTERS:
+        assert "{" not in report.render(intro, m)

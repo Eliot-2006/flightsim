@@ -147,8 +147,8 @@ FRD inertia tensor; B stores that matrix element as -982. Canonical data store
 the positive product, not the matrix element. Rotor momentum hx=160 is along
 positive body x. A's implementation also has rounded, combined rotational
 coefficients (c1…c9); these are not replacements for the published inertias.
-The planned full-inertia EOM should derive the coupling from I, and investigate
-the resulting rounding differences against A1 rather than alter the inertias.
+The full-inertia EOM derives the coupling from I; the resulting rounding differences
+against A1 are investigated in `docs/design.md` (Validation findings), without altering the inertias.
 
 ### Engine and atmosphere
 
@@ -189,7 +189,7 @@ position saturation**, with no surface-position states or surface lag/rate
 blocks. Thus there are no “lag/rate limits used in AeroBench” to transcribe;
 the `actuators.aerobench` flags explicitly record their absence.
 
-For the planned actuator model, C's `F16_Actuator_Library.mdl` supplies the
+For the actuator model, C's `F16_Actuator_Library.mdl` supplies the
 S&L-style gain **20.2 1/s** and rates **60/80/120 deg/s** for elevator/aileron/
 rudder. B Part 2/config reproduces these rates and positions but uses
 **tau=0.0495 s**, equivalent to **20.2020202020202 1/s**. Three exact
@@ -203,7 +203,7 @@ what AeroBench actually simulates.
 `reference_values.toml` records all 13 flight-variable derivatives of the S&L
 Table 3.5-2 check case, every input/state/control value, plus B's reported
 body velocities and (du,dv,dw)=(100.8536,-218.3080,-437.0399) ft/s². The latter
-are useful for the planned NED-velocity state implementation. Values are cited
+are used to check the NED-velocity state implementation. Values are cited
 individually; citation IDs resolve to pinned paths or the rendered tutorial.
 The rendered Part 3 page is used for displayed linear-model numbers, rather
 than executing its tutorial to generate new numbers.

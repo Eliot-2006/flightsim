@@ -82,7 +82,7 @@ JSBSim flies an aircraft generated from the same data file as ours, on a non-rot
 
 A +1,000 ft step saturates the pitch command. With back-calculation anti-windup the altitude overshoots {{control.c2.overshoot:.2f}} % and settles in {{control.c2.settling:.1f}} s; without it, {{control.c2n.overshoot:.2f}} % and {{control.c2n.settling:.1f}} s. The gains come from a linear design (loop margins at least {{control.c5.worst_gm:.0f}} dB and {{control.c5.worst_pm:.0f}}°) and were not tuned on the nonlinear model. Produced by [`f16_ap_c2_alt1000.toml`](scenarios/f16_ap_c2_alt1000.toml) and its [no-anti-windup twin](scenarios/f16_ap_c2_alt1000_nowindup.toml).
 
-The interactive report with every other figure (work–precision, quaternion norm, LN2 and LN3, all JSBSim overlays, C1–C4 and actuator usage) is `out/index.html` after a run.
+Every other figure is in the [interactive report](https://eliot-2006.github.io/flightsim/), rebuilt by CI on each push to main and also written to `out/index.html` by `scripts/demo.sh`. It includes all JSBSim overlays, a rotatable 3D view of the F-16's path and attitude taken from the simulator's own output, the trim and linearization checks, the autopilot responses C1–C4 with actuator usage, and the integrator studies.
 
 ## Quickstart
 

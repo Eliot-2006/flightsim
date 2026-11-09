@@ -1,85 +1,46 @@
-# PROGRESS
+# Project record
 
-Living log for the 6-DOF flight dynamics simulator. Spec: `docs/PRD.md`. Plan: `docs/superpowers/plans/2026-11-08-flightsim.md`.
+Final record of how flightsim was built and verified. Spec: [`docs/PRD.md`](docs/PRD.md) (with every amendment). Plan: [`docs/superpowers/plans/2026-11-08-flightsim.md`](docs/superpowers/plans/2026-11-08-flightsim.md). Results: [`docs/results.md`](docs/results.md). Live report: <https://eliot-2006.github.io/flightsim/>.
 
-## Current milestone
-All milestones M0–M8 complete and verified; independent review fixes merged. Remaining: owner merges the latest branch to main (Pages redeploys).
+## Status
 
-## Orchestration
-| Task | Track | Agent (model) | Branch / workspace | Status | Result |
-|---|---|---|---|---|---|
-| M0 foundations | A | Claude (Sonnet) | m0-foundations | completed, merged | Presets dev/release/asan, pinned deps, CI matrix, uv env |
-| M1 rigid-body core | A | Claude (Sonnet) | m1-core | completed, merged | 52 tests; T2 orders Euler 1.0015 / RK4 4.009; T5 catches transposed DCM and left-multiplication |
-| M2 rotational + integrators | A | Codex (gpt-6.1-sol, high) | m2-rotational | completed, merged | 88 tests; 32/32 asserted orders in bounds (Euler ≈1.00–1.05, RK4/RKMK4 ≈4.00–4.01, symplectic 1.01) |
-| M3 tooling, report, docs | A | Claude (Sonnet) | m3-tooling | completed, merged | demo.sh 28 s from clean clone; 113 tests; contrast ≥3:1 enforced by test |
-| M4b wind, F-16 model, consistency | D | Codex (gpt-6.1-sol, high) | m4b-f16-model | completed, merged | A1 all 13 components ≤ 2e-4 rel (ṗ/ṙ gap = S&L rounded inertia coefficients); B1/B2 residuals 6e-11/3e-10 (order 4.0); S1 symmetrized 2e-16; aircraft RK4 order ≈2.2 |
-| M6a JSBSim model generator | F | Claude (Sonnet) | m6a-jsbsim-model | completed, merged | Independent Python S&L evaluation vs JSBSim aero/thrust/mass ≤1e-9 rel; JSBSim trims at 0 and 10k ft; results at dt 1/2400 and 1/4800 committed |
-| M6b runner + JSBSim J1–J3 + budget | F | Claude (Sonnet) | m6b-jsbsim-compare | completed, merged | J1 pass (ẇ offset = US76 ρ difference); J2 ≤ 1.7e-5 rel; J3 max 1.26 % (limit 2 %); remainder ≈ JSBSim's own dt-halving effect (~0.3 %) |
-| M7a PID + linear design | G | Codex (gpt-6.1-sol, high) | m7a-pid-design | completed, merged | Linear C1: 4.3 % OS, 16.3 s settle, 3.0 ft/s; C3: 4.3 % OS, 4.2 ft; C5 GM ≥ 18 dB, PM ≥ 52° all loops (one airspeed→pitch cross-feed) |
-| M8 polish | H | Claude (Sonnet, high) | m8-polish | completed, merged (final demo run by orchestrator after a GitHub 504 stalled the worker) | J4 trim-only appendix; F-16 benchmarks (RK4 step ≈1.1 µs, 60 s closed loop ≈8,500× real time); coverage 96.4 % (gated 85 %); demo + coverage CI jobs |
-| Independent review | — | Claude (Opus) — Gemini CLI unusable ("client no longer supported… migrate to Antigravity"), Antigravity not installed | review-gemini | completed, merged (eee41a6) | 6 findings, none in physics/maths; 1–5 fixed, 6 via README |
-| M7b autopilot closed loop | G | Claude (Sonnet, high) | m7b-autopilot | completed, merged | C1 4.47 % / 16.45 s / 3.19 ft/s (linear 4.30 % / 16.3 s); C2 AW 3.08 % / 21.2 s vs no-AW 4.61 % / 90.5 s; C3 4.22 %, 4.88 ft; C4 gust 17.1 ft; B1 closed-loop 1e-9 |
-| M5 trim + linearization | E | Codex (gpt-6.1-sol, high) | m5-trim-linear | completed, merged | TR1: throttle +3.5e-5, δe +2e-5°, α +9e-7 rad (level_35); LN1 eigenvalue diffs ≤3.4e-4 1/s; LN2 ratio 96.3; LN3 ε=6e-6 flat |
-| 4.2–4.3 interp, data loader, atmosphere | D | Claude (Sonnet) | m4a-data-atmos | completed, merged | 75 tests at merge; US76 vs NASA-TM-X-74335 ≤1e-4 |
-| 4.0 JSBSim spike | B | Claude (Sonnet) | spike-jsbsim | completed, merged | Primary §8.6 approach feasible (jsbsim 1.3.3); see spikes/jsbsim/FINDINGS.md |
-| 4.1 F-16 data + reference values | C | Codex (gpt-6.1-sol) | f16-data | completed, merged | 3 sources (AeroBench, Archimedes, UMN) + TP-1538 visual checks; 22 raw-A cells resolved; A1/TR1/LN1 single-lineage (Archimedes) |
+Complete. All PRD milestones (M0–M8) meet their acceptance criteria. An independent review found no physics or maths defects, and its five code findings are fixed. Every CI job is green: GCC 13, Clang 18 and AppleClang builds in debug and release, ASan/UBSan, format, Python, JSBSim comparison, benchmarks, coverage (gated at 85 %), and a fresh-clone demo on Linux. The report is published to GitHub Pages from `main`.
 
-Integration branch: `flight-dynamics-prd-81fca11f` → `main`. The owner opened PR #2 (branch → main) and merged PR #1 themselves, so the orchestrator keeps the branch green and leaves PR merges to the owner.
+Not built (stretch goals in the PRD, documented as future work): heading hold, an LQR comparison, Dryden turbulence, C¹ table interpolation, and an in-browser (WASM) simulator.
 
-## Provider / quota notes
-- Codex: GPT-6.1 Terra is not in the local model catalog; using `gpt-6.1-sol` (strongest available).
-- Gemini CLI available (0.67.0) for optional second-opinion reviews. Antigravity not installed.
-- Codex shows its 5h limit in the TUI (30% left at 16:04, reset 16:59; 50% left at 17:49, resets 22:00); Claude/Gemini expose none.
-- No other provider exposes remaining quota to this orchestrator; usage is kept conservative (≤ 3 concurrent workers, reviews only on math-heavy merges).
+## Milestones
 
-## Verification log
-_(orchestrator-run checks only; worker claims are not recorded here until re-run)_
-- 2026-11-08 M0: clean `release` configure+build+ctest in m0 worktree: 3/3 pass; `uv run pytest`: 1 passed.
-- 2026-11-08 M1: release build, ctest 52/52 (41 unit, 11 validation); CLI run writes CSV+JSON; reviewed quat/EOM/RK4 by hand. CI (Linux gcc/clang dev+release, asan, format, python, bench) green on M0 commit.
-- 2026-11-08 M2+M4a merged: integration release build ctest 111/111 (75 unit, 36 validation); `flightsim converge` orders.json re-generated and inspected.
-- 2026-11-08 M7 merged: release ctest 202/202 (AppleClang + GCC 13); pytest 40 passed; demo.sh exit 0; jsbsim compare --check passed; C2 figure inspected.
-- 2026-11-08 CI adacc6d: all jobs green except sanitizers pending at check time (cross-platform regression tolerances fixed).
-- 2026-11-08 M7a merged: release ctest 172/172 (AppleClang + GCC 13); pytest 40 passed.
-- 2026-11-08 CI fixes 43e551d: JSBSim CSV regression check now uses per-unit physical floors + ψ wrap (Linux libm round-off in unexcited lateral channels); alloc test skipped under sanitizers (operator new replacement vs ASan); clang-format 18 pinned via uvx.
-- 2026-11-08 M6 merged: release ctest 165/165 (AppleClang + GCC 13 container); `uv run pytest` 36 passed; `jsbsim_compare.compare --check` CHECK PASSED.
-- 2026-11-08 M5+M6a merged: release ctest 159/159 (AppleClang), 159/159 (GCC 13 container); `scripts/demo.sh` exit 0; `uv run pytest` 23 passed.
-- 2026-11-08 M4: integration release ctest 139/139 (AppleClang) and 139/139 (GCC 13 container).
-- 2026-11-08 M3: fresh clone `scripts/demo.sh` exit 0 in 28.4 s, 113/113 tests; figures inspected (convergence slopes, R4 flip with constant H_N).
-- 2026-11-08 Local GCC 13 container check (`gcc_check.sh`) added to the merge routine; integration branch passes.
-- 2026-11-08 CI: gcc-13 failed on -Wdangling-else in a test (fixed d8849c9); macos-14 runner label unsupported → macos-15.
-- 2026-11-08 4.1: re-ran f16_data_diff.py → PASS, 6 documented resolutions, 0 unresolved.
-- 2026-11-08 4.0: re-ran `spikes/jsbsim/q2_3_4.py`; integrator/planet outputs match FINDINGS.md.
+| Milestone | Outcome |
+|---|---|
+| M0 Foundations | CMake presets (dev/release/asan), pinned dependencies by SHA-256, CI matrix, uv-managed Python 3.12 |
+| M1 Rigid-body core | Quaternion/frame conventions, each with a test; 13-state EOM; Euler and RK4; TOML scenarios; CLI `run`; translational analytic cases T0–T5 |
+| M2 Rotational validation | Symplectic Euler, Lie–Euler, RKMK4; torque-free references R1–R5 (Jacobi elliptic); 32/32 asserted convergence orders inside their bounds; spin-stability linearization |
+| M3 Tooling | Benchmarks, zero-allocation test, Plotly report with generated results.md and README, one-command `scripts/demo.sh` |
+| M4 F-16 model | S&L data transcribed and cross-checked against three sources; interpolation, atmospheres, engine, actuators, wind; check case A1 ≤ 2e-4; energy and angular-impulse balances 6e-11 / 3e-10 |
+| M5 Trim and linearization | Trim within 0.028 % of published values; eigenvalues within 0.28 %; LN2 quadratic scaling ratio 96 |
+| M6 JSBSim | Generated JSBSim aircraft from the same data on a matched planet; J1–J3 pass (worst 1.26 % of peak against 2 %); discrepancy budget |
+| M7 Autopilot | Linear design with margins ≥ 18 dB / ≥ 53°; nonlinear C1–C4 pass; anti-windup cuts C2 settling from 90 s to 21 s |
+| M8 Polish | Stock-JSBSim F-16 appendix (J4, trim only), F-16 benchmarks, coverage and demo CI, final documentation |
+| Release pass | Recruiter-facing README and report (results at a glance, chapters, 3D flight path from simulator output), GitHub Pages |
+
+## How it was built
+
+The work was orchestrated across agents in isolated Git worktrees, and every branch was re-verified by the orchestrator before merging: a release and debug build, the full test suite, a GCC 13 container build, and pytest. Claude (Sonnet) built M0, M1, M3, the JSBSim tooling, the closed-loop autopilot and the polish. Codex (gpt-6.1-sol) built the numerically heavy parts: M2, the F-16 model, trim and linearization, and the control design. Claude (Opus) did the independent review; the Gemini CLI could not be used (the client is no longer supported).
 
 ## Decisions
-- 2026-11-08: Commits carry the owner's identity and no Co-Authored-By/“Generated with” trailers (owner's global CLAUDE.md overrides tool attribution defaults).
-- 2026-11-08: Python pinned to 3.12 via uv.
-- 2026-11-08: Autopilot operating point 502 ft/s at 10,000 ft (SlAdc, xcg 0.35, actuators + engine lag on, 50 Hz) — keeps gust/step dips away from the ground stop.
-- 2026-11-08: J3 runs at 10,000 ft (from sea level the maneuvers leave the thrust table's lower edge where S&L extrapolates and JSBSim clamps).
-- 2026-11-08: LN1 will use the xcg = 0.30 published eigenvalues (only published linear data found); TR1 uses xcg 0.30/0.35/0.38 level trims; all labelled single-lineage per PRD §8.5.
-- 2026-11-08: PRD §10.3 amended: Euler on R1 has attitude order 2 (exact rotation axis), asserted on norm error instead.
-- 2026-11-08: PRD §8.6 amended per spike (no-RK4 JSBSim reference via two small steps; J4 trim-only).
 
-## Problems and resolutions
-- AppleClang 15 ASan aborts at startup on this Mac → local asan runs use Homebrew LLVM (`CC/CXX=$(brew --prefix llvm)/bin/clang[++]`); CI uses clang-18 on Linux.
-- `gh` CLI binary is x86 and won't run on this arm64 Mac → CI status read via public GitHub API; PRs created via web/API later.
-- System /usr/local pythons are x86 → uv-managed Python 3.12.
-- Codex workers can stall on a first-run 'Trust this folder?' prompt → orchestrator checks each Codex terminal right after launch and answers it.
-- GCC-only -Wdangling-else failures from unbraced gtest macros (twice) → braced; worker rules updated; local GCC 13 container check before every merge.
-- CMake 3.25.1 mis-parses `SYSTEM` in FetchContent_Declare → minimum raised to 3.28 (tested in CI and container).
-- M4b BLOCKED (correctly): planned 60 s open-loop fixture left the α table domain at 25 s; same-method 1e-3 reference rule infeasible for the non-smooth aircraft → PRD amended (20 s in-domain run; 10× reference rule for aircraft; 60 s closed-loop budget check in M7).
-- M5 BLOCKED on LN2 breakpoint monitor (β crosses 0 via rotor coupling) → criterion clarified (inactive/smooth crossings excluded with in-test proofs); ratio bound unchanged.
-- M7 review: first C2 anti-windup run never settled (tt = 1/ωc dragged the integrator) → tt = Ti per PI loop (Åström–Murray rule) via design.py; C2 criterion tightened in PRD.
-- M7a BLOCKED twice: gains file picked up as a report scenario (moved under scenarios/control); first design missed linear C1/C3 → redesigned in design.py (not by trial on the nonlinear model).
-- Codex 5h limit hit during M4b → kept model, resumed after reset.
-- JSBSim has no RK4; stock f16 FCS overrides direct surface writes → PRD §8.6 amendment (J4 trim-only).
+Each one is recorded with its rationale in the decision log in [`docs/design.md`](docs/design.md).
 
-## Independent review (Claude Opus, 2026-11-08 19:14)
-No physics/maths defects found; JSBSim comparison judged fair. Findings: (1) PID back-calculation with ki = 0 leaves a non-decaying bias (pid.cpp:40) — fix + test; (2) TR1 test tolerance 0.5 % vs ~3e-4 observed — tighten to a regression bound; (3) LN1 1 % vs 2.3e-4 observed — tighten; (4) pitch-rate anti-windup tracks commanded rather than rate-limited actual elevator (C2: −25° commanded, −14.7° reached) — track the actuator state; (5) S&L pressure constant 1715 is S&L's own (pressure unused by dynamics) — document; (6) README stale — handled in M8. Note: JSBSim J-cases fix xcg = 0.35 and rotor off; the CG transfer is cross-checked at point level by test_gen_xml (xcg ≠ xcg_ref state), the rotor only by A1.
+- Flat, non-rotating Earth; SI internally; velocity in NED; scalar-first Hamilton quaternion body→NED.
+- No book access, so the F-16 tables come from open reproductions cross-checked between sources, with NASA TP-1538 as the primary citation. Published reference values are labelled single-lineage throughout.
+- JSBSim comparison against a JSBSim aircraft generated from the same data file, on a non-rotating planet with matched gravity; J3 is flown at 10,000 ft so both simulators stay inside the thrust tables.
+- Autopilot operating point: 502 ft/s at 10,000 ft. Gains are designed only in `python/control_design/design.py`, never tuned on the nonlinear model.
+- PRD amendments, each with its evidence: Euler's order-2 attitude convergence on R1; the reference rule for the non-smooth aircraft model; the 20 s open-loop B1/B2 runs plus a 60 s closed-loop budget check; the LN2 breakpoint criterion; the tightened C2 criterion; and JSBSim's lack of RK4.
 
-## Remaining work
-- Owner: merge branch `flight-dynamics-prd-81fca11f` → main (PR) to publish M8 + the recruiter README; Pages (https://eliot-2006.github.io/flightsim/) redeploys automatically.
-- Optional (stretch, not required): heading hold, LQR comparison, Dryden turbulence, C¹ interpolation, WASM in-browser demo (owner chose report-only for now).
+## Problems found and fixed
 
-## Publishing
-- 2026-11-08: GitHub Pages enabled (source: GitHub Actions) at the owner's request; `.github/workflows/pages.yml` publishes `out/index.html` from main. First deploy from PR #5 merge succeeded (HTTP 200).
-- 2026-11-08: README rewritten for a recruiter audience (badges, live-report link, JSBSim overlay hero, at-a-glance results, engineering highlights); all numbers still generated from metrics.json.
+- A 60 s open-loop maneuver left the α table domain, so B1/B2 run for 20 s open-loop and 60 s closed-loop.
+- Back-calculation anti-windup at tt = 1/ωc never settled C2. Fixed with tt = Ti, derived in the design script.
+- The P-only PID back-calculation left a bias; anti-windup tracked the commanded elevator instead of the rate-limited one. Both fixed from the independent review, with regression tests.
+- Cross-platform floating-point differences: regression checks against committed JSBSim CSVs and gains compare numerically with physical floors, never bitwise.
+- Toolchain: GCC-only `-Wdangling-else` in tests; CMake 3.25 mis-parsing `SYSTEM` (minimum raised to 3.28); ASan versus a replaced global `operator new`; a GitHub release-asset 504 (googletest now fetched from the tag archive, same SHA-256).

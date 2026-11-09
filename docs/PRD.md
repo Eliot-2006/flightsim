@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | Draft for approval |
+| Status | Approved 2026-11-08; implemented (M0–M8 complete). Amendments made during implementation are marked inline. |
 | Date | 2026-11-08 |
 | Owner | Eliot Boda |
 | Language / build | C++20, CMake ≥ 3.28 |
-| Next step after approval | Implementation plan per milestone (superpowers:writing-plans) |
+| Outcome | [`PROGRESS.md`](../PROGRESS.md), [`docs/results.md`](results.md), [live report](https://eliot-2006.github.io/flightsim/) |
 
 ---
 
@@ -597,7 +597,7 @@ Heading hold + coordinated-turn trim; LQR vs PID comparison; Dryden turbulence; 
 - Stevens, B. L., Lewis, F. L., Johnson, E. N. *Aircraft Control and Simulation*, 3rd ed., Wiley, 2016 — Appendix A F-16 model, Ch. 3 trim/linearization examples.
 - Nguyen, L. T., et al. *Simulator Study of Stall/Post-Stall Characteristics of a Fighter Airplane with Relaxed Longitudinal Static Stability*, NASA TP-1538, 1979. https://ntrs.nasa.gov/citations/19800005879
 - Heidlauf, P., Collins, A., Bolender, M., Bak, S. "Verification Challenges in F-16 Ground Collision Avoidance and Other Automated Maneuvers", ARCH 2018 — AeroBenchVV (S&L model reproduction), https://github.com/pheidlauf/aerobenchvv, https://github.com/stanleybak/AeroBenchVVPython
-- F16Model.jl, https://github.com/isrlab/F16Model.jl; Archimedes "Subsonic F-16" tutorials, https://pinetreelabs.io/archimedes/tutorials/f16/
+- F16Model.jl, https://github.com/isrlab/F16Model.jl; Archimedes "Subsonic F-16" tutorials, https://pinetreelabs.io/archimedes/tutorials/f16/f16_00.html
 - Landau, L. D., Lifshitz, E. M. *Mechanics*, §37 (torque-free asymmetric top).
 - Abramowitz, M., Stegun, I. *Handbook of Mathematical Functions*, §16.4 (Jacobi elliptic functions, AGM).
 - Munthe-Kaas, H. "High order Runge–Kutta methods on manifolds", *Appl. Numer. Math.* 29 (1999); Iserles et al., "Lie-group methods", *Acta Numerica* (2000).

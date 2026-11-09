@@ -459,12 +459,14 @@ FIGURES.extend([
            "validation_tests: F16Autopilot.C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup",
            _overlay_builder("c2", "C1", 10.0)),
     Figure("c3-overlay", "C3: +50 ft/s airspeed step, nonlinear vs linear prediction",
-           "The +50 ft/s step needs more than the whole throttle range at the first sample (kp·ΔV exceeds 1), so the linear prediction, which has "
-           "no throttle limit, does not apply; the nonlinear run saturates the throttle and recovers slowly.",
+           "The +50 ft/s airspeed step on the nonlinear aircraft (solid) against the linear design's prediction (dashed). The first "
+           "throttle command briefly saturates (kp·ΔV exceeds 1); with tracking anti-windup the response still follows the linear "
+           "prediction closely, and the altitude excursion stays within a few feet.",
            "validation_tests: F16Autopilot.C3AirspeedStep50fps (overshoot ≤ 10 %, altitude deviation ≤ 20 ft)",
            _overlay_builder("c3", "C3", 1.0)),
     Figure("c2-windup", "C2: anti-windup against no anti-windup",
-           "The +1,000 ft step with back-calculation anti-windup (solid) and without (dashed): altitude, pitch command and throttle.",
+           "The +1,000 ft step with back-calculation anti-windup (solid) and without (dashed), over the first 120 s: altitude, "
+           "altitude error, pitch command and throttle. Without anti-windup the saturated integrator overshoots further and returns slowly.",
            "validation_tests: F16Autopilot.C2AltitudeStep1000ftAntiwindupBeatsNoAntiwindup (overshoot with ≤ 15 % and strictly less than without)",
            c2_windup, headline=True),
     Figure("c4-disturbance", "C4: headwind change and vertical gust rejection",
@@ -477,3 +479,71 @@ FIGURES.extend([
            "unit_tests: AircraftRunnerAutopilot (rates/limits are applied by the model); the per-step peaks are in docs/results.md",
            actuator_usage),
 ])
+
+
+# ---------------------------------------------------------------- 3D flight path (real simulator output)
+# Stylised F-16 planform in body axes (FRD, metres; overall length 15 m, span 9.5 m). Triangles only; it is a
+# glyph for attitude, not a model of the aircraft.
+_GLYPH_V = [(7.5, 0, 0), (-7.5, -0.6, 0), (-7.5, 0.6, 0),       # fuselage sliver
+            (3.0, 0, 0), (-4.0, -4.75, 0), (-4.0, 4.75, 0),     # delta wing
+            (-5.5, 0, 0), (-7.5, -2.8, 0), (-7.5, 2.8, 0),      # horizontal tail
+            (-4.0, 0, 0), (-7.5, 0, 0), (-7.5, 0, -3.2)]        # vertical tail (z down, so -z is up)
+_GLYPH_SCALE = 20.0  # drawn 20x actual size so the attitude is legible against a 3 km path; orientation is exact
+_GLYPH_TIMES = (0.0, 1.5, 3.0, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5, 20.0)
+
+
+def _dcm(q0, q1, q2, q3):
+    """C_NB (body -> NED) from the scalar-first unit quaternion written by the CLI (same formula as math/quat.cpp)."""
+    return ((q0*q0 + q1*q1 - q2*q2 - q3*q3, 2*(q1*q2 - q0*q3), 2*(q1*q3 + q0*q2)),
+            (2*(q1*q2 + q0*q3), q0*q0 - q1*q1 + q2*q2 - q3*q3, 2*(q2*q3 - q0*q1)),
+            (2*(q1*q3 - q0*q2), 2*(q2*q3 + q0*q1), q0*q0 - q1*q1 - q2*q2 + q3*q3))
+
+
+def flight_3d(out: Path) -> go.Figure:
+    """The J3 aileron-pulse run in 3D: flightsim's path with its attitude drawn every few seconds from the
+    quaternion the simulator wrote, and JSBSim's path for the same maneuver. Plot axes: x East, y North, z altitude."""
+    ours = read_csv(out / "jsbsim" / "work" / "ail_pulse_ours" / "trajectory.csv")
+    jsb = read_csv(Path(__file__).resolve().parents[2] / "reference" / "jsbsim" / "results" / "ail_pulse_h10000_dt2400.csv")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter3d(x=ours["pE_m"], y=ours["pN_m"], z=ours["h_m"], mode="lines", name="flightsim path",
+                               meta=0, line=dict(color=LIGHT[0], width=5),
+                               customdata=list(zip(ours["t_s"], ours["phi_deg"], ours["theta_deg"])),
+                               hovertemplate="t %{customdata[0]:.1f} s<br>bank %{customdata[1]:.1f}°, pitch %{customdata[2]:.1f}°"
+                                             "<br>altitude %{z:.0f} m<extra>flightsim</extra>"))
+    fig.add_trace(go.Scatter3d(x=[e * FT for e in jsb["pE_ft"]], y=[n * FT for n in jsb["pN_ft"]], z=[h * FT for h in jsb["h_ft"]],
+                               mode="lines", name="JSBSim path (same data, own trim)", meta=1,
+                               line=dict(color=LIGHT[1], width=3, dash="dash"), hoverinfo="skip"))
+    xs, ys, zs, ii, jj, kk = [], [], [], [], [], []
+    for t in _GLYPH_TIMES:
+        n = min(range(len(ours["t_s"])), key=lambda m: abs(ours["t_s"][m] - t))
+        C = _dcm(ours["q0"][n], ours["q1"][n], ours["q2"][n], ours["q3"][n])
+        base = len(xs)
+        for vb in _GLYPH_V:
+            vn = [sum(C[r][c] * vb[c] * _GLYPH_SCALE for c in range(3)) for r in range(3)]
+            xs.append(ours["pE_m"][n] + vn[1])
+            ys.append(ours["pN_m"][n] + vn[0])
+            zs.append(-(ours["pD_m"][n] + vn[2]))
+        for tri in range(len(_GLYPH_V) // 3):
+            ii.append(base + 3 * tri)
+            jj.append(base + 3 * tri + 1)
+            kk.append(base + 3 * tri + 2)
+    fig.add_trace(go.Mesh3d(x=xs, y=ys, z=zs, i=ii, j=jj, k=kk, color=LIGHT[0], opacity=0.85, flatshading=True,
+                            name=f"attitude every few seconds ({_GLYPH_SCALE:.0f}× scale)", showlegend=True,
+                            hoverinfo="skip", lighting=dict(ambient=0.7, diffuse=0.5)))
+    axis = dict(showbackground=False, zeroline=False, gridcolor="#e4e2dc", linecolor="#e4e2dc")  # solid: WebGL ignores alpha
+    fig.update_layout(scene=dict(xaxis=dict(title="East [m]", **axis), yaxis=dict(title="North [m]", **axis),
+                                 zaxis=dict(title="altitude [m]", **axis), aspectmode="manual",
+                                 aspectratio=dict(x=0.8, y=2.0, z=0.7),
+                                 camera=dict(eye=dict(x=1.75, y=-1.05, z=0.55), center=dict(x=0, y=0, z=-0.1),
+                                             up=dict(x=0, y=0, z=1))))
+    return _style(fig, 500).update_layout(margin=dict(l=0, r=0, t=0, b=30), legend=dict(y=0.02))
+
+
+FIGURES.append(
+    Figure("flight-3d", "3D flight path: aileron pulse, flightsim and JSBSim",
+           "A 2° aileron pulse at 1–2 s from level trim at 502 ft/s and 10,000 ft starts a descending left turn. The blue path "
+           "and the aircraft glyphs are flightsim's own output: positions from the trajectory CSV and attitudes from the quaternion "
+           "the simulator wrote, drawn every few seconds at 20× scale. The dashed orange path is JSBSim flying the same maneuver from its "
+           "own trim. Drag to rotate, scroll to zoom.",
+           "the J3 aileron-pulse comparison (`python -m jsbsim_compare.compare --check`); attitude conventions: unit_tests Quat.*, Frames.*",
+           flight_3d))
