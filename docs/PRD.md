@@ -217,6 +217,7 @@ The quaternion exponential uses a series expansion for small angles (‖θ‖ < 
 - Error metrics: position/velocity/ω Euclidean norm; attitude via `θ_err` (§4.2); energy and momentum relative drifts.
 - Observed order: `p_k = log2(e(h_k)/e(h_{k+1}))`. Report the least-squares slope over the **asymptotic window**: levels whose error is > 1e3·ε_machine·scale (above roundoff floor) and whose successive `p_k` agree within 10%.
 - Every convergence study outputs: error-vs-h log-log plot with reference slopes, observed-order table, and **work–precision** plot (error vs. number of derivative evaluations).
+- **Amendment (M4, 2026-11-08):** for the non-smooth aircraft model the 1e-3 reference rule is infeasible (reduced order). There the reference is RK4 at `h_min/64`, its error is estimated by self-convergence (`h_min/32` vs `h_min/64`), and the order is fitted only over levels whose error is ≥ 10× that estimate; both are reported.
 - Aircraft-model convergence is measured and reported; reduced order due to non-smooth tables is expected and explained, not asserted as 4.
 
 ---
@@ -286,7 +287,7 @@ Conservation metrics reported for every rotational case and integrator: max rela
 ### 8.4 Aircraft consistency laws
 | ID | Check | Criterion |
 |---|---|---|
-| B1 | Work–energy including rotation: `E = ½m‖v_N‖² + ½ω_BᵀIω_B + m·Φ(h)` vs `W_nc = ∫ [(C_NB F_B)·v_N + M_B·ω_B] dt` (augmented state). Gyroscopic terms do no work (`ω·(ω×(Iω+h)) = 0`), so this exercises Euler's equations and the force/moment assembly. It does **not** test the direction of `C_NB` (both sides use it) — T5 and B2 own that. | `|ΔE − W_nc| / max|ΔE|` converges at the integrator's observed order and is < 1e-6 at dt = 0.01 s for a 60 s maneuvering run |
+| B1 | Work–energy including rotation: `E = ½m‖v_N‖² + ½ω_BᵀIω_B + m·Φ(h)` vs `W_nc = ∫ [(C_NB F_B)·v_N + M_B·ω_B] dt` (augmented state). Gyroscopic terms do no work (`ω·(ω×(Iω+h)) = 0`), so this exercises Euler's equations and the force/moment assembly. It does **not** test the direction of `C_NB` (both sides use it) — T5 and B2 own that. | `|ΔE − W_nc| / max|ΔE|` converges at the integrator's observed order and is < 1e-6 at dt = 0.01 s for a 20 s open-loop maneuvering run that stays inside the table domain (amended in M4: the untrimmed open-loop 60 s run leaves the α domain at ≈25 s; a 60 s closed-loop budget check is added in M7) |
 | B2 | Angular impulse: `ΔH_N` vs `∫ C_NB M_B dt` (augmented state; includes rotor) | Same criterion |
 | W1 | Galilean invariance: trimmed flight in a constant uniform wind | Air-relative states identical (≤ 1e-9 rel.) to the no-wind run; ground track offset by `w_N t` |
 | S1 | Mirror symmetry with `h_x = 0`: ±δa doublets, run on a **test-only symmetrized copy** of the aileron/rudder effectiveness tables (made even in β). The published tables are not exactly symmetric in β, so the production model is not expected to mirror exactly. | Symmetrized data: lateral states exact negatives, longitudinal identical (≤ 1e-12 rel.). Production data and `h_x ≠ 0`: asymmetry measured and reported, not asserted |
