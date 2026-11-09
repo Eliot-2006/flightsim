@@ -20,6 +20,8 @@ endif()
 
 add_library(flightsim_core STATIC
   src/flightsim/control/pid.cpp
+  src/flightsim/control/autopilot.cpp
+  src/flightsim/control/metrics.cpp
   src/flightsim/version.cpp
   src/flightsim/math/quat.cpp
   src/flightsim/math/elliptic.cpp
@@ -60,6 +62,8 @@ include(GoogleTest)
 
 add_executable(unit_tests
   tests/unit/test_pid.cpp
+  tests/unit/test_autopilot.cpp
+  tests/unit/test_metrics.cpp
   tests/unit/test_trim.cpp
   tests/unit/test_aircraft_runner.cpp
   tests/unit/test_smoke.cpp
@@ -84,6 +88,7 @@ target_compile_definitions(unit_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAKE_SOUR
 gtest_discover_tests(unit_tests PROPERTIES LABELS unit)
 
 add_executable(validation_tests
+  tests/validation/test_f16_autopilot.cpp
   tests/validation/test_f16_linear.cpp
   tests/validation/test_f16_trim.cpp
   tests/validation/test_smoke_validation.cpp
