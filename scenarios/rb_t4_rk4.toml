@@ -1,0 +1,24 @@
+# T4 (PRD 8.2): anisotropic harmonic oscillator, same data as validation case T4.
+# Phase-portrait input at a deliberately coarse h = 0.05 s so the Euler spiral is visible; integrator = rk4.
+[sim]
+integrator = "rk4"
+dt_s = 0.05
+t_final_s = 20.0
+output_every = 1
+
+[body]
+mass_kg = 1.0
+inertia_kgm2 = [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]]
+
+[initial]
+position_m = [1, 1, 1]
+velocity_mps = [0, 0.5, 0]
+euler_deg = [0, 0, 0]
+omega_radps = [0, 0, 0]
+
+[environment]
+gravity_mps2 = 0.0
+
+[[forces]]
+type = "spring"
+k_Npm = [1.0, 4.0, 9.0]    # F_N = -diag(k) p_N
