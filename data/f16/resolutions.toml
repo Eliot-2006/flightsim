@@ -1,0 +1,50 @@
+# Exact, directional exceptions for canonical LEFT vs raw source-B RIGHT.
+# No wildcard or tolerance overrides. All original A/B disagreements are in SOURCES.md.
+
+[[resolution]]
+path = "actuators.aileron.lag_rate"
+left = 20.2
+right = 20.2020202020202
+chosen = 20.2
+reason = "Retain the S&L/UMN gain 20.2 1/s; B uses tau=0.0495 s (reciprocal 20.2020202020202 1/s). These are rounded approximations, not identical numbers. AeroBench has no surface lag dynamics."
+source = "SOURCES.md#actuators; UMN F16_Actuator_Library.mdl gain 20.2; Archimedes config.yaml full tau=0.0495"
+
+[[resolution]]
+path = "actuators.elevator.lag_rate"
+left = 20.2
+right = 20.2020202020202
+chosen = 20.2
+reason = "Retain the S&L/UMN gain 20.2 1/s; B uses tau=0.0495 s (reciprocal 20.2020202020202 1/s). These are rounded approximations, not identical numbers. AeroBench has no surface lag dynamics."
+source = "SOURCES.md#actuators; UMN F16_Actuator_Library.mdl gain 20.2; Archimedes config.yaml full tau=0.0495"
+
+[[resolution]]
+path = "actuators.rudder.lag_rate"
+left = 20.2
+right = 20.2020202020202
+chosen = 20.2
+reason = "Retain the S&L/UMN gain 20.2 1/s; B uses tau=0.0495 s (reciprocal 20.2020202020202 1/s). These are rounded approximations, not identical numbers. AeroBench has no surface lag dynamics."
+source = "SOURCES.md#actuators; UMN F16_Actuator_Library.mdl gain 20.2; Archimedes config.yaml full tau=0.0495"
+
+[[resolution]]
+path = "aero.damping.values[10][1]"
+left = -0.493
+right = 0.493
+chosen = -0.493
+reason = "Retain CYr(alpha=40 deg)=-0.493: AeroBench MATLAB and Python and pre-AeroBench UMN damping table agree. B has +0.493. NASA TP-1538 does not supply this exact reduced-table entry as a directly matching cell."
+source = "SOURCES.md#numeric-resolutions; AeroBench dampp.py, dampp.m; UMN lofi_F16_AeroData.c damping"
+
+[[resolution]]
+path = "engine.throttle_gearing.high_intercept"
+left = -117.38
+right = -117.3788
+chosen = -117.38
+reason = "Retain the printed S&L/AeroBench intercept -117.38 percent. B derives -117.3788 from the two slopes and breakpoint to make the branches continuous; preserve the printed constant rather than silently change the engine."
+source = "SOURCES.md#engine-and-atmosphere; AeroBench tgear.py and tgear.m; Archimedes engine.py F16Engine.tgear"
+
+[[resolution]]
+path = "mass_geometry.reciprocal_mass.value"
+left = 0.00157
+right = 0.0015699999969253965
+chosen = 0.00157
+reason = "Retain the printed reciprocal mass rm=0.00157 1/slug used by S&L/AeroBench. B derives rm=32.17/20490.4459; the tiny rounding difference exceeds the required relative 1e-9 tolerance. Neither value is g/20500; W=20500 lbf is nominal NASA weight."
+source = "SOURCES.md#mass-and-inertia; AeroBench subf16_model.py rm; Archimedes f16_01.md weight and gd"
