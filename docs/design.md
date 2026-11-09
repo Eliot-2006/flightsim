@@ -1,6 +1,6 @@
 # Design
 
-Companion to `docs/PRD.md` (the specification) and `docs/results.md` (generated numbers). This file explains how the code is organised, why it is built that way, and the mathematics behind the less obvious parts. The F-16 model and validation are implemented; trim, aircraft linearization, JSBSim comparison and autopilot follow in M5–M7.
+Companion to `docs/PRD.md` (the specification) and `docs/results.md` (generated numbers). This file explains how the code is organised, why it is built that way, and the mathematics behind the less obvious parts. Everything the PRD specifies is implemented: the rigid-body core, the F-16 model and its consistency laws, trim and linearization, the matched JSBSim comparison and the stock-JSBSim appendix, the actuators and the altitude and airspeed autopilot, benchmarks and the report.
 
 ## 1. Architecture
 
@@ -13,15 +13,16 @@ One static library, `flightsim_core`, with folders as modules; a thin CLI; three
 | `env/` | atmosphere models, gravity, constant wind and discrete gust |
 | `aircraft/` | F-16 data loader and nonlinear aero/engine/actuator model |
 | `validation/` | analytic references (T0–T5, R1–R5), convergence harness |
-| `sim/` | TOML scenario loader, runner, CSV/JSON output |
-| `analysis/` | generic central-difference Jacobian, air-relative flight-variable chart |
+| `sim/` | TOML scenario loaders (rigid body and aircraft), fixed-step runners including the closed-loop aircraft runner, CSV/JSON output |
+| `analysis/` | generic central-difference Jacobian, air-relative flight-variable chart, trim, linearization, mode identification |
+| `control/` | discrete PID with back-calculation anti-windup, the altitude/airspeed autopilot, step and disturbance metrics |
 
 Design choices, each of which keeps the dynamics testable in isolation:
 
 - **Pure derivative functions.** `rigid_body_deriv(x, mass_props, force_moment, g_N)` has no state; forces are `std::function` objects that are summed by the caller. The same function is used by the runner, the validation harness and the benchmarks.
 - **Integrators are free function templates** over fixed-size `Eigen::Matrix<double, N, 1>`: no heap allocation in a step. `alloc_tests` (`NoAlloc.Rk4StepLoopAllocatesNothing`) replaces global `operator new` and asserts zero allocations over 10⁴ RK4 steps after warmup; `NoAlloc.CounterSeesHeapAllocation` proves the counter is live.
-- **Python never computes physics.** `python/flightsim_analysis` runs the CLI (`run`, `converge`), reads CSV/JSON, and draws. Time-history figures come from scenarios in `scenarios/`.
-- **Report pipeline.** `scripts/demo.sh` → build, `ctest`, `uv sync --frozen`, `flightsim_analysis.run` (writes `out/runs/*`, `out/studies/*`, `out/bench.json`) → `flightsim_analysis.report` (writes `out/metrics.json`, `out/index.html`, `docs/results.md`). `docs/results.md` is rendered from `docs/results.template.md`; every number is a `{{key}}` from `metrics.json`, and `python/tests/test_report.py` fails if a placeholder is left unfilled.
+- **Python never computes physics.** `python/flightsim_analysis` runs the CLI (`run`, `trim`, `linearize`, `converge`), reads CSV/JSON, and draws; `python/jsbsim_compare` drives JSBSim and compares; `python/control_design` designs gains from the CLI's linearization. Time-history figures come from scenarios in `scenarios/`.
+- **Report pipeline.** `scripts/demo.sh` → build, `ctest`, `uv sync --frozen`, `flightsim_analysis.run` (writes `out/runs/*`, `out/aircraft/*`, `out/control/*`, `out/studies/*`, `out/jsbsim/*` including the stock-f16 trim, `out/checks/*` (the numbers the validation tests print), `out/bench.json` and `out/env.json` (hardware, OS, compiler, flags)) → `flightsim_analysis.report` (writes `out/metrics.json`, `out/index.html`, `docs/results.md`, `README.md`). `docs/results.md` and `README.md` are rendered from `docs/results.template.md` and `docs/README.template.md`; every number is a `{{key}}` from `metrics.json`, and `python/tests/test_report.py` fails if a placeholder is left unfilled.
 - **Extending the report.** A new figure is one builder plus one `Figure(...)` entry in `plots.py`; a new result is keys in `metrics.py` plus text in the template. The page is a single static file with Plotly JS inlined (no CDN, no server).
 - **Determinism.** `-ffp-contract=off` on all targets; `Runner.DeterministicBitwise` asserts two runs write identical bytes.
 
@@ -137,45 +138,92 @@ small differences from the published rounded c1…c9 rotational equations; the
 test reproduces those rounded equations diagnostically without changing the
 production EOM. The investigation is recorded under Validation findings below.
 
-From PRD §1.2 (engineering calls made with the specification):
+### Decision table
 
-| Call | Rationale |
-|---|---|
-| Flat, non-rotating Earth; NED treated as inertial | Correct for short-duration, low-Mach flight; removes Coriolis/curvature. JSBSim is configured to match. |
-| SI units internally; imperial only at data-load/report boundaries | One unit system in the dynamics; conversion is tested. |
-| Translational velocity stored in NED | Direct momentum/energy balances; u, v, w, α, β are derived outputs. |
-| Scalar-first Hamilton quaternion `q_NB` (body → NED) | Matches Eigen's Hamilton product; documented once and tested. |
-| Fixed-size Eigen state vectors; integrators as free function templates | Zero heap allocation per step; no class hierarchy. |
-| Trim by damped Newton / Levenberg–Marquardt on Eigen | Small, explainable, no extra dependency. *(M5)* |
-| Linearization by central differences in a 13-state flight-variable chart | Avoids the redundant-quaternion zero eigenvalue. *(M5; generic `jacobian_central` exists)* |
-| TOML scenario files (toml++) | Human-readable, comments document scenarios; Python reads CSV/JSON. |
-| JSBSim driven from Python, reference CSVs committed | No C++ dependency on JSBSim. *(M6)* |
-| Controller gains designed on the linear model in Python | Classic workflow, margins plus nonlinear verification. *(M7)* |
+Every entry is dated (the project ran in a single day of working sessions, 2026-11-08), states the decision, the alternatives that were considered and the rationale. The first block is the engineering calls of PRD §1.2; the second the PRD amendments; the third the orchestrator's decisions recorded in `PROGRESS.md`; the fourth the M8 decisions. Detail for the larger items is in the subsections of this file named in the last column.
 
-From `PROGRESS.md` and M2/M3 work:
+**Engineering calls (PRD §1.2)**
 
-| Date | Decision |
-|---|---|
-| 2026-11-08 | Commits carry the owner's identity and no co-author or generated-by trailers. |
-| 2026-11-08 | Python pinned to 3.12 via uv. |
-| 2026-11-08 | LN1 uses the xcg = 0.30 published eigenvalues; TR1 uses xcg 0.30/0.35/0.38 level trims; all labelled single-lineage per PRD §8.5. *(M5)* |
-| 2026-11-08 | PRD §10.3 amended: Euler on R1 has attitude order 2; asserted on norm error instead (§3.5). |
-| 2026-11-08 | PRD §8.6 amended per the JSBSim spike: no-RK4 JSBSim reference via two small steps; J4 trim-only. *(M6)* |
-| 2026-11-08 | Report is one static HTML page with Plotly JS inlined (≈ 5 MB), not a CDN reference: works offline and cannot drift from a pinned version. |
-| 2026-11-08 | Time-history figures use dedicated scenarios in `scenarios/` (R3 at h = 0.02 s per integrator, T4 at h = 0.05 s) so everything is produced by the CLI. |
-| 2026-11-08 | `docs/results.md` is generated and committed; the template and a fixture `metrics.json` keep it testable without the C++ build. |
-| 2026-11-08 | `bench_smoke.cpp` removed; `bench_integrators.cpp` supersedes it. |
+| Date | Decision | Alternatives | Rationale |
+|---|---|---|---|
+| 2026-11-08 | Flat, non-rotating Earth; NED treated as inertial | Rotating WGS84 Earth with Coriolis and curvature | Correct for short, low-Mach flights and removes Coriolis and curvature from the core. JSBSim is configured to match; the spike measured 3 to 17 ft of altitude difference over 20 s when it is not (`spikes/jsbsim/FINDINGS.md`). |
+| 2026-11-08 | SI units internally; imperial only at data-load and report boundaries | Imperial throughout (S&L, JSBSim) | One unit system in the dynamics; the conversion constants are defined once and tested (`Units.ConstantsAreConsistent`). |
+| 2026-11-08 | Translational velocity stored in NED | Body-axis velocity as in S&L and JSBSim | Momentum and energy balances are direct; u, v, w, α, β are derived outputs. |
+| 2026-11-08 | Scalar-first Hamilton quaternion `q_NB` (body to NED) | Vector-first or JPL convention; Euler-angle state | Matches Eigen's Hamilton product; the storage-order pitfall has its own test (`Quat.EigenStorageOrderGuard`). |
+| 2026-11-08 | Fixed-size Eigen state vectors and integrators as free function templates | Virtual integrator classes; dynamically sized vectors | Zero heap allocation per step (`NoAlloc.Rk4StepLoopAllocatesNothing`) and no class hierarchy. |
+| 2026-11-08 | Trim by Levenberg–Marquardt on Eigen with central-difference Jacobians | A general-purpose solver dependency (Ceres, SciPy) | About 50 lines, explainable, no extra dependency (M5 section). |
+| 2026-11-08 | Linearize in a 13-state flight-variable chart by central differences | Quaternion coordinates; analytic or complex-step Jacobians | Quaternion coordinates add a spurious zero eigenvalue; analytic derivatives of a table-driven model cost far more than they buy; ε is chosen from the LN3 sweep. |
+| 2026-11-08 | TOML scenario files (toml++) | JSON or YAML; command-line flags | Comments document each scenario; Python reads CSV and JSON, never the TOML physics. |
+| 2026-11-08 | JSBSim driven from Python, reference CSVs committed | Linking JSBSim into the C++ build | The main build never needs JSBSim; the pinned wheel is a CI job of its own. |
+| 2026-11-08 | Controller gains designed on the linear model in Python, verified on the nonlinear model | Tuning on the nonlinear model | Gives margins and a linear-against-nonlinear story; nothing was tuned on the nonlinear model (M7a and M7b sections). |
+
+**PRD amendments**
+
+| Date | Decision | Alternatives | Rationale |
+|---|---|---|---|
+| 2026-11-08 | §10.3: Euler on R1 has attitude order 2; its first-order behaviour is asserted on the unprojected quaternion-norm error | Keep the PRD's order-1 attitude assertion; drop Euler from R1 | M2 measured order 2: renormalized Euler is an exact rotation about the right axis with a wrong angle (section 3.5). Asserting what is true keeps the test meaningful. |
+| 2026-11-08 | §6.3 amendment (M4): for the non-smooth aircraft the 1e-3 reference rule is replaced by RK4 at h_min/64 with a self-convergence estimate, and the fit uses levels whose error is at least 10× that estimate | Keep the rule and claim order 4; skip the aircraft study | With piecewise-linear tables the rule cannot be met; the order is measured and explained, not asserted as 4 (Aircraft budget and convergence amendments). |
+| 2026-11-08 | §8.4 amendment (M4): B1 and B2 run 20 s in-domain, not 60 s; a 60 s closed-loop B1 is added at M7 | Widen the table domain; extrapolate | The open-loop doublet excites an unstable mode (+0.13/s) and leaves the α table at 25.46 s; extrapolation would test the tables, not the equations. |
+| 2026-11-08 | §8.5 / M5: LN2 runs from a fresh trim at 100 ft, and exactly two inactive-lookup exclusions are allowed, each proved by an in-test assertion | Sea-level run with a loosened ratio bound; no exclusions | At sea level a real lift-loss transient evaluates thrust at h < 0. The [70, 130] bound is unchanged; any other cell change still fails (M5: LN2 active breakpoint guard). |
+| 2026-11-08 | §8.6 amendment (spike): JSBSim has no RK4, so its discretization error is bounded by two small steps (1/2400 and 1/4800 s) and its integrators are set explicitly; matched trim needs a dummy zero-power engine; J4 is trim only | Edit a copy of the GPL `f16.xml` to drive its surfaces; run JSBSim at one step | The spike showed the stock FCS overwrites direct surface writes and that FGTrim needs an engine to vary throttle (`spikes/jsbsim/FINDINGS.md`). |
+| 2026-11-08 | §8.7 amendment (M7 review): C2 requires anti-windup to be no worse than no anti-windup on overshoot and settling time, in addition to the numeric bounds | Keep the original bounds only | The first implementation met overshoot but never settled; the criterion now encodes what anti-windup is for (M7b: anti-windup tracking times). |
+
+**Orchestrator decisions (`PROGRESS.md`)**
+
+| Date | Decision | Alternatives | Rationale |
+|---|---|---|---|
+| 2026-11-08 | Commits carry the owner's identity and no co-author or generated-by trailers | Tool-default attribution | The owner's global instruction overrides tool defaults. |
+| 2026-11-08 | Python pinned to 3.12 via uv | System Python | One interpreter for every contributor and for CI; the system Pythons on the development Mac are x86 and break `uv` interpreter discovery. |
+| 2026-11-08 | CMake minimum raised to 3.28 | Stay at 3.25 and avoid `SYSTEM` in `FetchContent_Declare` | CMake 3.25.1 mis-parses `SYSTEM`; the new minimum was tested in CI and a GCC 13 container. |
+| 2026-11-08 | Local sanitizer runs use Homebrew LLVM; CI uses clang-18 | Disable ASan locally | AppleClang 15 ASan aborts at startup on the development Mac. |
+| 2026-11-08 | The alloc test is skipped under sanitizers; braces on every `if`/`for` containing a gtest macro | Keep the test in the sanitizer build; accept GCC `-Wdangling-else` | Replacing `operator new` conflicts with the sanitizer allocator; GCC 13 with `-Werror` fails on unbraced gtest macros. A GCC 13 container check runs before every merge. |
+| 2026-11-08 | The autopilot operating point is 502 ft/s at 10,000 ft (x_cg 0.35, actuators and engine lag on, 50 Hz) | The PRD's provisional sea-level point | Keeps the gust and step dips away from the ground stop and inside the thrust table (M7a: control operating point). |
+| 2026-11-08 | J3 runs at 10,000 ft; J1 and J2 run at sea level and 10,000 ft | J3 from sea level | From sea level the maneuvers leave the thrust table's lower edge, where S&L extrapolates and JSBSim clamps, so the cases would not be comparable. |
+| 2026-11-08 | LN1 uses the published xcg = 0.30 eigenvalues; TR1 uses xcg 0.30, 0.35 and 0.38; all labelled single-lineage | Compare LN1 at xcg 0.35 with no reference | The only published linear data found is at 0.30 (M5 section). |
+| 2026-11-08 | M4b blocked and resolved: the 60 s open-loop fixture was replaced by a 20 s in-domain run; a 10× reference rule for the aircraft | Continue with the infeasible fixture | See the two amendments above. |
+| 2026-11-08 | M5 blocked on the LN2 breakpoint monitor and resolved by the criterion in the LN2 amendment | Drop the monitor | The monitor is what makes the quadratic ratio meaningful. |
+| 2026-11-08 | M7 review: back-calculation tracking time tt = T_i for every PI loop, from `design.py`; C2 criterion tightened | Keep tt = 1/ω_c; retune on the nonlinear model | tt = 1/ω_c dragged the altitude integrator negative and the run never settled. The rule is analytic (Åström–Hägglund) and was applied once. |
+| 2026-11-08 | M7a blocked twice and resolved: the gains file moved under `scenarios/control/` so the report does not run it as a scenario, and the first design was redone in `design.py` (one cross-feed) | Tune the nonlinear model | The first design missed linear C1/C3 targets; a deterministic search found no feasible plain cascade (M7a: why one cross-feed is needed). |
+| 2026-11-08 | The report is one static HTML page with Plotly's JavaScript inlined | A CDN reference | Works offline and cannot drift from a pinned version. |
+| 2026-11-08 | Time-history figures use dedicated scenarios in `scenarios/` | Python integration of the plotted trajectories | Everything plotted is produced by the CLI. |
+| 2026-11-08 | `docs/results.md` and `README.md` are generated and committed from templates plus a fixture `metrics.json` | Hand-written results | Numbers cannot drift from the code; the fixture keeps the report testable without the C++ build. |
+| 2026-11-08 | The integration branch is kept green and PR merges are left to the owner; commits and pushes are the owner's | Orchestrator merges | The owner opened PR #2 and merged PR #1 themselves. |
+
+**M8 decisions**
+
+| Date | Decision | Alternatives | Rationale |
+|---|---|---|---|
+| 2026-11-08 | J4 reads the stock surface position `fcs/elevator-pos-rad` as δe, and compares thrust in lbf as well as throttle | The stock trim command `fcs/pitch-trim-cmd-norm` as δe; throttle only | The aerodynamic tables read the surface position, and the pitch-trim command passes through a scheduler, PID and kinematic. The throttle scales differ (ours 0.77 is military power, stock 1.0 of a doubled scale is), so thrust is the physical comparison (J4 section). |
+| 2026-11-08 | J4 retracts the gear (trimming twice) and lowers the terrain 5,000 ft; the planet stays JSBSim's default | Trim with the file's default gear-down state; build a matched planet for the stock aircraft | The gear adds a large drag term and sea-level ground contact stops FGTrim. J4 is a model-form comparison, so matching the Earth would answer a question the appendix does not ask. |
+| 2026-11-08 | Benchmarks report the median CPU time of 7 repetitions of at least 0.1 s each | A single run; the mean | The median is robust to a stray slow repetition on a machine in ordinary use; the coefficient of variation is reported. |
+| 2026-11-08 | The F-16 derivative and RK4-step benchmarks start every iteration from the trimmed state | Step on from the previous state | The open-loop aircraft is unstable and leaves the model's domain within seconds of iterations. |
+| 2026-11-08 | The 60 s closed-loop benchmark includes its own trim solve | Subtract it; start from a precomputed trim | The trim costs microseconds against a run of milliseconds; including it keeps the benchmark the same code path as the scenario runner. |
+| 2026-11-08 | A1, B1, B2, S1, W1 and aircraft-convergence numbers are read from the stdout of the tests that assert them, not duplicated in new code | Add a second computation in C++ or Python; record gtest properties | One computation, one place; a Python test pins the parsed format. |
+| 2026-11-08 | The README shows four figures: convergence, Dzhanibekov with H_N, the JSBSim elevator doublet, the C2 anti-windup comparison; `drift.png` is dropped | Keep the drift figure; use C1 | The drift numbers are in the headline table; C2 shows the design insight where C1 only matches the linear prediction. |
 
 ## 5. Known limitations
 
-- Aircraft trim, linearization, JSBSim comparison and autopilot are *coming in M5–M7*.
-- Flat non-rotating Earth, constant mass and inertia, uniform gravity unless a model parameter says otherwise.
-- Fixed-step integration only; no adaptive stepping or dense output.
-- Symplectic Euler is exercised on translational oscillators only (§3.4); on rotation it is plain Euler.
-- RKMK4 and Lie–Euler cover attitude only; other states use RK4 and Euler respectively.
-- Smooth-case observed orders use eight step levels with reference-accuracy checks; cases without a closed-form attitude (R3 attitude, R4) rely on the fine RK4 reference. The non-smooth aircraft study uses the amended five-level procedure below.
-- Zero-allocation is asserted for the RK4 loop with a quadratic-drag force model; other integrators and force combinations are not separately tested.
-- Benchmark numbers in `docs/results.md` are for one machine and one compiler (recorded there); they are reported, not gated.
+- **Environment.** Flat, non-rotating Earth with NED treated as inertial; constant mass and inertia; uniform gravity unless a model parameter says otherwise. The JSBSim comparison matches a non-rotating spherical planet, and J4 deliberately does not.
+- **Reduced S&L data envelope.** The model is the reduced S&L tabulation of TP-1538: α from −10° to 45°, subsonic, narrow β ranges for the control-effectiveness tables, thrust tables over a limited altitude and Mach range. A lookup outside a table extrapolates one cell and is flagged; the validation and comparison runs assert that none occurred, which is why J3 runs at 10,000 ft and B1/B2 run 20 s. Post-stall, spin and landing are outside the model.
+- **Single-lineage secondary references.** A1, TR1 and LN1 are compared with the S&L published values as reproduced by secondary sources that descend from one another, because the book was not available; the longitudinal LN1 matrices are tutorial-computed. Several citations do not make several independent sources (`data/f16/SOURCES.md`). B1, B2, W1, S1 and the JSBSim comparison do not depend on them.
+- **JSBSim remainder.** For most J3 signals the part of the difference left after the budget is about the size of JSBSim's own change when its step is halved. The largest remainder (the aileron pulse's pitch rate, about 1 %) is not attributed to a tested source: the curvature correction is additive while the aileron pulse swings the attitude by tens of degrees, and small convention differences were not toggled. It is inside the 2 % criterion and stated plainly in `docs/results.md`.
+- **Aircraft integration order.** RK4 on the aircraft shows an order near 2, not 4, because the tables are piecewise linear; it is measured and explained, not claimed.
+- **Slow altitude-integral tail.** The altitude PI zero at 0.005 rad/s leaves a tail of about 200 s, so C1 runs 305 s and its steady-state criterion is evaluated on the last 10 s.
+- **Actuator rate limit.** The 60°/s elevator rate limit is reached at the first controller sample after the C1 command; the linear design has no rate limit, and the comparison shows the effect is brief.
+- **Engine lag and rotor excluded from the JSBSim comparison.** Constant throttle and `h_x = 0` on both sides there (JSBSim has no direct equivalent); the production model and the control results include both.
+- **No turbulence, sensors or estimation.** Gusts are the deterministic 1-cos profile and a constant wind step; the autopilot sees the true state and is longitudinal only (no heading hold).
+- **J4 is trim only.** The stock aircraft's FCS overwrites direct surface writes, so no open-loop response of the stock model is compared, and its planet and mass properties are not matched.
+- **Numerics.** Fixed-step integration only; symplectic Euler is exercised on translational oscillators only (§3.4) and is plain Euler on rotation; RKMK4 and Lie–Euler cover attitude only (other states use RK4 and Euler); the zero-allocation test covers the RK4 loop with a quadratic-drag force model; cases without a closed-form attitude (R3 attitude, R4) rely on the fine RK4 reference.
+- **Benchmarks.** Numbers in `docs/results.md` are for one machine and one compiler (recorded there, with the methodology) and are reported, not gated.
+
+## 6. Future work
+
+- **Heading hold** (ψ → φ_cmd → aileron with rudder coordination) and coordinated-turn trim (PRD §7.1 "should").
+- **LQR** on the same linear model, compared with the PID cascade on the same scenarios and metrics.
+- **Dryden / von Kármán turbulence** with a seeded generator, which also needs a sensor and estimation layer to be meaningful.
+- **C¹ table interpolation** (for example a monotone cubic or Akima spline) to show RK4's fourth order returning on the aircraft model.
+- **Access to the book** (for example through a library): A1, TR1 and LN1 would become direct transcriptions with page citations, and the single-lineage caveat would go. No other change is needed.
+- **Closing the JSBSim remainder:** toggling the degree/radian constant and the additive curvature approximation on the aileron case would either explain or bound the remaining 1 %.
 
 ## Validation findings
 
@@ -552,3 +600,26 @@ crossover time. `t_t` does not enter any linear analysis, so C5 margins, linear 
 only change to `autopilot_gains.toml` is the three `tt` values. The stability condition `T < 2 t_t` holds with room (every `t_t` is at least 25 T). The rule was chosen from this analysis and applied once; nothing was tuned on the nonlinear model. Result (nonlinear, committed gains):
 C2 with anti-windup overshoots 3.08 % (4.61 % without), settles in 21.2 s (90.5 s without), ends 3.46 ft from the command; C3 overshoots 4.22 % and settles in
 11.85 s (linear 11.0 s). C1 is unchanged.
+
+### M8: stock JSBSim `f16` (J4)
+
+`python/jsbsim_compare/stock_f16.py` trims the `f16` shipped in the pinned jsbsim wheel (1.3.3) at 502 ft/s, level, at sea level and 10,000 ft, and
+`docs/results.md` ("Stock JSBSim F-16 (J4 appendix)") tabulates the result beside our matched-model trim. Four things about the stock file are not
+obvious and were found by running it:
+
+- **The gear starts down.** `gear/gear-cmd-norm` defaults to 1 and the file's drag build-up includes a large gear term, so a naive trim describes a
+  different aircraft. The script commands the gear up and trims twice: the gear kinematic takes 5 s of FCS time to retract, so the second trim, started
+  from the retracted state, is the clean-wing one (`python/tests/test_stock_f16.py` asserts `gear/gear-pos-norm == 0` and a zero gear drag coefficient).
+- **Sea-level trim fails on the ground.** The aircraft has bogey and structure contact points, so at 0 ft FGTrim fights ground reactions and reports
+  "Trim Failed". `ic/terrain-elevation-ft` is set to −5,000 ft; the atmosphere is a function of altitude above mean sea level and is unchanged.
+- **The elevator has three levels.** The pilot input `fcs/elevator-cmd-norm` stays 0. FGTrim varies `fcs/pitch-trim-cmd-norm`, which is summed with the
+  stick, clipped, scheduled by angle of attack, fed to a pitch-rate and g-load PID, and then driven through a 0.3 s kinematic to `fcs/elevator-pos-norm`
+  and `fcs/elevator-pos-rad` (±0.436 rad). Only the last is the surface position the aerodynamic tables read, so it is the stock equivalent of our δe;
+  its sign matches S&L's (the stock pitch-moment table decreases as the position increases).
+- **The throttle scale is doubled.** `fcs/throttle-pos-norm = 2 × fcs/throttle-cmd-norm`, and the F100-PW-229 file treats 1.0 as military power and
+  1.0 to 2.0 as afterburner. S&L's gearing puts military power at throttle 0.77 (P = 50 %). The numerical throttle values are therefore not comparable;
+  thrust in lbf is, and is reported next to the power-lever position as a fraction of military power.
+
+The planet and gravity are JSBSim's defaults (rotating WGS84, gravity model 1), the atmosphere is JSBSim's, and the mass properties are the file's
+(20,630 lbf with 3,000 lbf of fuel, CG about 0.018 c̄ forward of the aerodynamic reference point). None of these is matched to ours, by design: the
+appendix measures the scale of model-form uncertainty, and no pass/fail applies.
