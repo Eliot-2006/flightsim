@@ -57,6 +57,8 @@ def test_full_pipeline_builds_every_figure(tmp_path):
 
     run.main(["--out", str(tmp_path / "out"), "--bench-min-time", "0.01s"])
     m = metrics.build(tmp_path / "out")
+    assert {"trim.table", "linear.modes.table", "linear.matrices.table", "linear.ln2.ratio", "linear.ln3.table"} <= m.keys()
+    assert {"ln3", "ln2"} <= {f.id for f in plots.FIGURES}
     html = report.build_html(tmp_path / "out", m)
     for f in plots.FIGURES:
         assert f'id="fig-{f.id}"' in html
@@ -88,3 +90,26 @@ def test_series_colours_meet_non_text_contrast(colors, surface):
 
 def test_surfaces_match_css():
     assert f"--bg:{LIGHT_SURFACE}" in report.CSS and f"--bg:{DARK_SURFACE}" in report.CSS
+
+
+@pytest.mark.skipif(not CLI.exists(), reason="release CLI not built")
+@pytest.mark.parametrize("cg", ["030", "035"])
+def test_aircraft_cli_json(tmp_path, cg):
+    for command in ("trim", "linearize"):
+        dest = tmp_path / f"{command}.json"
+        subprocess.run([CLI, command, ROOT / f"scenarios/f16_trim_502_xcg{cg}.toml", "--out", dest], check=True)
+        result = json.loads(dest.read_text())
+        assert result["trim"]["ok"]
+        # Task 5.1 convergence threshold, reported by C++.
+        assert result["trim"]["residual"] < 1e-10
+        assert len(result["trim"]["x17"]) == 17
+        if command == "linearize":
+            assert len(result["A"]) == 13 and all(len(row) == 13 for row in result["A"])
+            assert len(result["B"]) == 13 and all(len(row) == 4 for row in result["B"])
+            assert result["input_units"] == ["1", "rad", "rad", "rad"]
+            if cg == "030":
+                assert {m["name"] for m in result["modes"]} == {"phugoid", "short_period", "dutch_roll", "roll", "spiral"}
+            else:
+                assert any(m["real"] > 0 for m in result["modes"])
+            assert len(result["sweep"]) == 9
+            assert len(result["responses"]) == 2
