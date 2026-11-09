@@ -31,8 +31,11 @@ TEST(Integrators, RenormalizeLeavesOthers) {
   const Vec<14> before = x;
   renormalize_quat(x);
   EXPECT_EQ(rb::quat(x), Vec4(1, 0, 0, 0));  // exact: 2/2
-  for (int i = 0; i < 14; ++i)
-    if (i < rb::kQuat || i >= rb::kQuat + 4) EXPECT_EQ(x(i), before(i)) << i;
+  for (int i = 0; i < 14; ++i) {
+    if (i < rb::kQuat || i >= rb::kQuat + 4) {
+      EXPECT_EQ(x(i), before(i)) << i;
+    }
+  }
 }
 
 TEST(Integrators, StepDispatcherCountsEvaluations) {

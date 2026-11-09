@@ -13,7 +13,7 @@ jobs:
           - {os: ubuntu-24.04, cc: gcc-13, cxx: g++-13, preset: release}
           - {os: ubuntu-24.04, cc: clang-18, cxx: clang++-18, preset: dev}
           - {os: ubuntu-24.04, cc: clang-18, cxx: clang++-18, preset: release}
-          - {os: macos-14, cc: clang, cxx: clang++, preset: release}
+          - {os: macos-15, cc: clang, cxx: clang++, preset: release}
     runs-on: ${{ matrix.os }}
     env:
       CC: ${{ matrix.cc }}
