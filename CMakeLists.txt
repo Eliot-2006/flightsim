@@ -77,6 +77,12 @@ target_link_libraries(validation_tests PRIVATE flightsim_core GTest::gtest_main)
 flightsim_target_options(validation_tests)
 gtest_discover_tests(validation_tests PROPERTIES LABELS validation)
 
-add_executable(bench_flightsim bench/bench_smoke.cpp)
+# Own executable: it replaces global operator new to count allocations.
+add_executable(alloc_tests tests/alloc/test_no_alloc.cpp)
+target_link_libraries(alloc_tests PRIVATE flightsim_core GTest::gtest_main)
+flightsim_target_options(alloc_tests)
+gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
+
+add_executable(bench_flightsim bench/bench_integrators.cpp)
 target_link_libraries(bench_flightsim PRIVATE flightsim_core benchmark::benchmark)
 flightsim_target_options(bench_flightsim)
