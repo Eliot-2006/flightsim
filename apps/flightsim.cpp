@@ -12,7 +12,9 @@
 
 #include "flightsim/analysis/linearize.hpp"
 #include "flightsim/analysis/modes.hpp"
+#include "flightsim/math/quat.hpp"
 #include "flightsim/math/units.hpp"
+#include "flightsim/sim/aircraft_runner.hpp"
 #include "flightsim/sim/aircraft_scenario.hpp"
 #include "flightsim/sim/output.hpp"
 #include "flightsim/sim/runner.hpp"
@@ -35,6 +37,22 @@ int usage() {
 // non-finite.
 int cmd_run(const std::string& scenario_path, const std::filesystem::path& out_dir) {
   namespace sim = flightsim::sim;
+  if (toml::parse_file(scenario_path).contains("aircraft")) {  // aircraft scenarios dispatch on [aircraft]
+    const auto ac = sim::load_aircraft_scenario(scenario_path);
+    const auto out = sim::run_aircraft(ac);
+    std::filesystem::create_directories(out_dir);
+    sim::write_aircraft_csv(out_dir / "trajectory.csv", ac, out);
+    sim::write_aircraft_metadata(out_dir / "metadata.json", ac, out);
+    std::cout << "wrote " << (out_dir / "trajectory.csv").string() << " and "
+              << (out_dir / "metadata.json").string() << " (" << out.t.size()
+              << " samples, stop: " << sim::to_string(out.reason) << " at t=" << out.t_stop
+              << " s, out_of_domain: " << std::boolalpha << out.out_of_domain << ")\n";
+    if (out.reason == sim::StopReason::NonFinite) {
+      std::cerr << "error: " << out.message << '\n';
+      return 1;
+    }
+    return 0;
+  }
   const sim::RigidBodyScenario scenario = sim::load_rigid_body_scenario(scenario_path);
   const sim::RunOutput out = sim::run(scenario);
   std::filesystem::create_directories(out_dir);
@@ -98,6 +116,21 @@ int cmd_aircraft(const std::string& command, const std::string& scenario, const 
   json_string(out, trim_monitor.first_violation);
   out << ",\"x17\":";
   json_vector(out, tr.x);
+  {
+    const AtmState atm =
+        atmosphere(s.model.atm, s.trim.h);  // for the JSBSim atmosphere comparison (rho, T, a)
+    out << ",\"atmosphere\":{\"rho\":" << atm.rho << ",\"T\":" << atm.T << ",\"p\":" << atm.p
+        << ",\"a\":" << atm.a << '}';
+    // Body-axis accelerations at the trim state (du/dt of body-frame velocity, not the inertial rate), for
+    // the J1 point check against JSBSim's accelerations/{u,w}dot and qdot.
+    const Vec<17> xd = s.model.deriv(0, tr.x, tr.u);
+    const Mat3 c_nb = dcm_from_quat(tr.x.segment<4>(6));
+    const Vec3 omega = tr.x.segment<3>(10), v_b = c_nb.transpose() * tr.x.segment<3>(3);
+    const Vec3 a_b = c_nb.transpose() * xd.segment<3>(3) - omega.cross(v_b);
+    out << ",\"accel_body\":{\"udot_mps2\":" << a_b(0) << ",\"vdot_mps2\":" << a_b(1)
+        << ",\"wdot_mps2\":" << a_b(2) << ",\"pdot_rps2\":" << xd(10) << ",\"qdot_rps2\":" << xd(11)
+        << ",\"rdot_rps2\":" << xd(12) << '}';
+  }
   out << '}';
   if (command == "linearize" && tr.ok) {
     const auto lm = linearize(s.model, tr);

@@ -116,6 +116,7 @@ def build(out: Path) -> dict:
         else:
             m[f"bench.r3run.{integ}.us"] = ns / 1e3
     m.update(aircraft(out))
+    m.update(jsbsim(out))
     return m
 
 
@@ -189,4 +190,94 @@ def aircraft(out: Path) -> dict:
             rows.append(f"| {response['step_deg']:.2g} | {change['table']} | {change['from']} → {change['to']} | "
                         f"{change['t']:.3g} | {verdict}: {reason} |")
     m["linear.ln2.changes.table"] = "\n".join(rows)
+    return m
+
+
+SIGNAL_ORDER = ("V", "alpha", "q", "theta", "h", "beta", "p", "r", "phi")
+SIGNAL_LABEL = {"V": "ΔV [ft/s]", "alpha": "Δα [deg]", "q": "Δq [deg/s]", "theta": "Δθ [deg]", "h": "Δh [ft]",
+                "beta": "Δβ [deg]", "p": "Δp [deg/s]", "r": "Δr [deg/s]", "phi": "Δφ [deg]"}
+CASE_LABEL = {"elev_doublet": "elevator doublet", "ail_pulse": "aileron pulse", "rud_doublet": "rudder doublet"}
+BUDGET_ROWS = [  # (key in compare.json budget, label) -- order = presentation order
+    ("jsbsim_dt_halving", "JSBSim step 1/2400 → 1/4800 s"),
+    ("our_dt_halving", "Our RK4 step 1/2400 → 1/1200 s"),
+    ("gravity_constant", "Our gravity: inverse-square → constant g0"),
+    ("atmosphere", "Atmosphere ρ mismatch (sensitivity probe × measured ρ difference)"),
+    ("curvature", "Earth curvature (JSBSim no-input drift removed)"),
+    ("residual_trim_mismatch", "Residual trim mismatch (ours started from JSBSim's trim)"),
+    ("sampling_alignment", "Sampling alignment (time mismatch × peak rate)"),
+    ("table_edges", "Table edges (monitor / domain assertions)"),
+]
+
+
+def _pct(v):
+    return "—" if v is None else f"{100 * v:.3f}"
+
+
+def jsbsim(out: Path) -> dict:
+    """Flatten out/jsbsim/compare.json (written by jsbsim_compare.compare) into report keys. Pure formatting."""
+    c = json.loads((out / "jsbsim" / "compare.json").read_text())
+    m, crit = {}, c["criteria"]
+    rows = []
+    for r in c["J1"]:
+        j, o = r["jsbsim"], r["ours"]
+        rows.append(f"| {r['h_ft']} | {j['udot_fps2']:.3e} | {j['wdot_fps2']:.3e} | {j['qdot_rps2']:.3e} | "
+                    f"{r['wdot_from_rho_fps2']:.3e} | {o['wdot_fps2']:.1e} | {'pass' if r['pass'] else 'FAIL'} |")
+    m["jsbsim.j1.table"] = "\n".join(rows)
+    m["jsbsim.j1.status"] = "pass" if all(r["pass"] for r in c["J1"]) else "FAIL"
+    rows = []
+    for r in c["J2"]:
+        for k, name in (("alpha_deg", "α [deg]"), ("de_deg", "δe [deg]"), ("throttle", "throttle [-]")):
+            rows.append(f"| {r['h_ft']} | {name} | {r[k]['ours']:.8g} | {r[k]['jsbsim']:.8g} | {r[k]['rel']:.2e} | "
+                        f"{'pass' if r['pass'] else 'FAIL'} |")
+    m["jsbsim.j2.table"] = "\n".join(rows)
+    m["jsbsim.j2.status"] = "pass" if all(r["pass"] for r in c["J2"]) else "FAIL"
+    rows, worst, where = [], 0.0, ""
+    for case, r in c["J3"].items():
+        for s in SIGNAL_ORDER:
+            v, peak = r["metrics"][s], r["peak"][s]
+            if v is None:
+                rows.append(f"| {CASE_LABEL[case]} | {SIGNAL_LABEL[s]} | {peak:.1e} | not excited | — | — |")
+                continue
+            self_ = c["budget"]["jsbsim_dt_halving"][case]["self"][s]
+            rows.append(f"| {CASE_LABEL[case]} | {SIGNAL_LABEL[s]} | {peak:.4g} | {100 * v:.3f} | {100 * self_:.3f} | "
+                        f"{'pass' if v <= crit['J3_rel'] else 'FAIL'} |")
+            if v > worst:
+                worst, where = v, f"{CASE_LABEL[case]}, {SIGNAL_LABEL[s]}"
+    m["jsbsim.j3.table"] = "\n".join(rows)
+    m["jsbsim.j3.worst"], m["jsbsim.j3.worst_where"] = 100 * worst, where
+    m["jsbsim.j3.status"] = "pass" if all(r["pass"] for r in c["J3"].values()) else "FAIL"
+    # budget: for each source, the largest |change of the J3 metric| over the three cases, per signal (percentage points)
+    def over_cases(entries, field):
+        return {s: max([abs(e[field][s]) for e in entries if e[field][s] is not None] or [None]) if any(
+            e[field][s] is not None for e in entries) else None for s in SIGNAL_ORDER}
+
+    base = {s: max([r["metrics"][s] for r in c["J3"].values() if r["metrics"][s] is not None] or [None]) if any(
+        r["metrics"][s] is not None for r in c["J3"].values()) else None for s in SIGNAL_ORDER}
+    rows = [f"| **Baseline J3 metric** | " + " | ".join(_pct(base[s]) for s in SIGNAL_ORDER) + " |"]
+    for key, label in BUDGET_ROWS:
+        eff = over_cases(list(c["budget"][key].values()), "effect")
+        rows.append(f"| {label} | " + " | ".join(_pct(eff[s]) for s in SIGNAL_ORDER) + " |")
+    rem = over_cases([{"e": v["metrics"]} for v in c["budget"]["all_explained"].values()], "e")
+    rows.append("| **Unexplained remainder** (all of the above applied together) | " + " | ".join(_pct(rem[s]) for s in SIGNAL_ORDER) + " |")
+    m["jsbsim.budget.table"] = "\n".join(rows)
+    left = [(v, case, sig) for case, e in c["budget"]["all_explained"].items() for sig, v in e["metrics"].items() if v is not None]
+    worst_left, worst_case, worst_sig = max(left)
+    m["jsbsim.remainder.worst"] = 100 * worst_left
+    m["jsbsim.remainder.where"] = f"{CASE_LABEL[worst_case]}, {SIGNAL_LABEL[worst_sig]}"
+    m["jsbsim.remainder.second"] = 100 * max(v for v, case, sig in left if (case, sig) != (worst_case, worst_sig))
+    m["jsbsim.remainder.steps"] = 100 * max(
+        abs(e["effect"][s]) for key in ("jsbsim_dt_halving", "our_dt_halving") for e in [c["budget"][key][worst_case]]
+        for s in SIGNAL_ORDER if e["effect"][s] is not None)
+    a = c["atmosphere"]
+    m["jsbsim.atm.table"] = "\n".join(
+        f"| {name} | {a['ours'][k]:.9g} | {a['jsbsim'][k]:.9g} | {a['rel'][k]:.2e} |"
+        for k, name in (("rho", "ρ [kg/m³]"), ("T", "T [K]"), ("a", "a [m/s]")))
+    m["jsbsim.atm.h_ft"], m["jsbsim.atm.probe_rel_rho"] = a["h_ft"], a["probe_rel_rho"]
+    cv = c["curvature"]
+    rows = []
+    for t, an, hold in zip(cv["t_s"], cv["analytic"], cv["jsbsim_hold"]):
+        for k, name in (("h_ft", "Δh [ft]"), ("theta_deg", "Δθ [deg]"), ("V_fps", "ΔV [ft/s]")):
+            rows.append(f"| {t:g} | {name} | {an[k]:.4g} | {hold[k]:.4g} |")
+    m["jsbsim.curv.table"] = "\n".join(rows)
+    m["jsbsim.sampling.mismatch"] = max(v["time_mismatch_s"] for v in c["budget"]["sampling_alignment"].values())
     return m

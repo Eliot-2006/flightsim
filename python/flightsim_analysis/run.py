@@ -42,6 +42,10 @@ def main(argv=None) -> int:
     sh(exe, "trim", generated, "--out", out / "aircraft" / "trim_level_38.json")
     for study in sorted((ROOT / "scenarios" / "studies").glob("*.toml")):
         sh(exe, "converge", study, "--out", out / "studies" / study.stem)
+    # JSBSim matched comparison (J1-J3 + budget): our runs via the CLI, JSBSim side from reference/jsbsim.
+    from jsbsim_compare import compare
+
+    compare.main(["--out", str(out / "jsbsim"), "--bin", str(exe)])
     bench = exe.parent / "bench_flightsim"
     sh(bench, f"--benchmark_min_time={args.bench_min_time}", f"--benchmark_out={out / 'bench.json'}",
        "--benchmark_out_format=json")
