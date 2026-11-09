@@ -1,6 +1,9 @@
 #include "flightsim/validation/analytic.hpp"
 
 #include <cmath>
+#include <stdexcept>
+
+#include "flightsim/math/elliptic.hpp"
 
 namespace flightsim::validation {
 
@@ -40,4 +43,38 @@ RotatingForceSolution exact_rotating_body_force(double m, double F, double Omega
           quat_mul(q0, Vec4(std::cos(0.5 * Omega * t), 0.0, 0.0, std::sin(0.5 * Omega * t)))};
 }
 
+double rotational_energy(const Vec<13>& x, const MassProps& mp) {
+  return 0.5 * rb::omega(x).dot(mp.inertia * rb::omega(x));
+}
+
+Vec3 angular_momentum_N(const Vec<13>& x, const MassProps& mp) {
+  return quat_rotate(rb::quat(x), mp.inertia * rb::omega(x) + mp.h_rotor);
+}
+
+Vec<13> exact_symmetric_top(const Vec<13>& x0, const MassProps& mp, double t) {
+  const Vec3 w0 = rb::omega(x0);
+  const double A = mp.inertia(0, 0), C = mp.inertia(2, 2);
+  const Vec3 H = angular_momentum_N(x0, mp);
+  const double lambda = w0.z() * (C - A) / A;
+  Vec<13> x = x0;
+  rb::pos(x) += t * rb::vel(x0);
+  rb::quat(x) = quat_mul(quat_mul(quat_from_rotvec(t * H / A), rb::quat(x0)),
+                         quat_from_rotvec(Vec3(0, 0, -lambda * t)));
+  rb::omega(x) = Vec3(w0.x() * std::cos(lambda * t) - w0.y() * std::sin(lambda * t),
+                      w0.x() * std::sin(lambda * t) + w0.y() * std::cos(lambda * t), w0.z());
+  return x;
+}
+
+Vec3 exact_asymmetric_omega(const Vec3& I, const Vec3& w0, double t) {
+  const double A = I.x(), B = I.y(), C = I.z();
+  const double twiceE = w0.dot(I.cwiseProduct(w0)), L2 = I.cwiseProduct(w0).squaredNorm();
+  if (!(0 < A && A < B && B < C && L2 > twiceE * B) || w0.y() != 0 || !std::isfinite(t))
+    throw std::invalid_argument("LL reference requires 0<I1<I2<I3, L^2>2E I2, omega2(0)=0, finite t");
+  const double frequency = std::sqrt((C - B) * (L2 - twiceE * A) / (A * B * C));
+  const double m = (B - A) * (twiceE * C - L2) / ((C - B) * (L2 - twiceE * A));
+  const auto [sn, cn, dn] = jacobi_elliptic(frequency * t, m);
+  const double a2 = std::copysign(std::sqrt((twiceE * C - L2) / (B * (C - B))), w0.x() * w0.z());
+  // omega2 has the sign of omega1(0)*omega3(0): Euler gives omega2dot(0)=(C-A)w1w3/B.
+  return Vec3(w0.x() * cn, a2 * sn, w0.z() * dn);
+}
 }  // namespace flightsim::validation

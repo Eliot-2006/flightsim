@@ -17,7 +17,8 @@ struct CaseDef {
   std::vector<ForceModel> forces;
   Vec<13> x0;
   double t_final;
-  std::function<Vec<13>(double t)> exact;  // empty -> no closed form
+  std::function<Vec<13>(double t)> exact;          // empty -> no full-state closed form
+  std::function<Vec3(double t)> exact_omega = {};  // R3: elliptic rates, attitude needs a fine reference
 };
 
 // Translational cases (PRD 8.2); parameters are fixed and documented in cases.cpp.
@@ -27,5 +28,11 @@ CaseDef case_T2();  // 3D linear drag + gravity
 CaseDef case_T3();  // vertical quadratic drag from rest
 CaseDef case_T4();  // anisotropic harmonic oscillator
 CaseDef case_T5();  // rotating body-x force (catches C_NB vs C_BN)
+
+CaseDef case_R1();
+CaseDef case_R2();
+CaseDef case_R3();
+CaseDef case_R4();
+CaseDef case_R5();
 
 }  // namespace flightsim::validation
