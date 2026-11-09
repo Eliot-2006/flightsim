@@ -32,15 +32,17 @@ sim::AircraftScenario load(const std::string& text) {
 
 TEST(AircraftRunner, RejectsUnalignedInputEvent) {
   // dt = 0.01 s: an event at 0.505 s falls between steps.
-  EXPECT_THROW(load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0.505\nt_end_s=1.0\nvalue=1\n")),
-               std::runtime_error);
-  EXPECT_NO_THROW(load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0.5\nt_end_s=1.0\nvalue=1\n")));
+  EXPECT_THROW(
+      load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0.505\nt_end_s=1.0\nvalue=1\n")),
+      std::runtime_error);
+  EXPECT_NO_THROW(
+      load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0.5\nt_end_s=1.0\nvalue=1\n")));
 }
 
 TEST(AircraftRunner, DoubletAppliedOnSchedule) {
-  const auto s = load(scenario_text(
-      "3\n", "[[inputs]]\nchannel='de'\nt_start_s=1\nt_end_s=2\nvalue=1\n"
-             "[[inputs]]\nchannel='de'\nt_start_s=2\nt_end_s=3\nvalue=-1\n"));
+  const auto s = load(scenario_text("3\n",
+                                    "[[inputs]]\nchannel='de'\nt_start_s=1\nt_end_s=2\nvalue=1\n"
+                                    "[[inputs]]\nchannel='de'\nt_start_s=2\nt_end_s=3\nvalue=-1\n"));
   const auto out = sim::run_aircraft(s);
   ASSERT_EQ(out.t.size(), 301u);
   for (std::size_t i = 0; i < out.t.size(); ++i) {
@@ -69,8 +71,8 @@ TEST(AircraftRunner, FromTrimStaysTrimmedWithNoInputs) {
 
 TEST(AircraftRunner, OutOfDomainReported) {
   // +60 deg elevator step: alpha and the elevator table are driven out of their domains.
-  const auto out =
-      sim::run_aircraft(load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0\nt_end_s=2\nvalue=60\n")));
+  const auto out = sim::run_aircraft(
+      load(scenario_text("2\n", "[[inputs]]\nchannel='de'\nt_start_s=0\nt_end_s=2\nvalue=60\n")));
   EXPECT_TRUE(out.out_of_domain);
   EXPECT_FALSE(out.first_violation.empty());
 }

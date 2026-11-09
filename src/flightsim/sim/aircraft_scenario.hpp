@@ -2,8 +2,8 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <vector>
 #include <toml++/toml.hpp>
+#include <vector>
 
 #include "flightsim/analysis/trim.hpp"
 #include "flightsim/core/integrators.hpp"
@@ -26,9 +26,9 @@ struct AircraftScenario {
   TrimSpec trim;
   // Present when the file has [sim]; trim-only scenarios (trim/linearize CLI) leave it empty.
   std::optional<AircraftRunConfig> run;
-  bool from_trim = true;      // [initial] from_trim; else x13 (S&L order, SI) + base controls below
+  bool from_trim = true;  // [initial] from_trim; else x13 (S&L order, SI) + base controls below
   Vec<13> x13_0 = Vec<13>::Zero();
-  F16Input u_base;            // base controls when !from_trim
+  F16Input u_base;  // base controls when !from_trim
   std::vector<InputEvent> inputs;
   std::string source_path;
 };

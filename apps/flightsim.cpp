@@ -12,6 +12,7 @@
 
 #include "flightsim/analysis/linearize.hpp"
 #include "flightsim/analysis/modes.hpp"
+#include "flightsim/math/quat.hpp"
 #include "flightsim/math/units.hpp"
 #include "flightsim/sim/aircraft_runner.hpp"
 #include "flightsim/sim/aircraft_scenario.hpp"
@@ -115,6 +116,21 @@ int cmd_aircraft(const std::string& command, const std::string& scenario, const 
   json_string(out, trim_monitor.first_violation);
   out << ",\"x17\":";
   json_vector(out, tr.x);
+  {
+    const AtmState atm =
+        atmosphere(s.model.atm, s.trim.h);  // for the JSBSim atmosphere comparison (rho, T, a)
+    out << ",\"atmosphere\":{\"rho\":" << atm.rho << ",\"T\":" << atm.T << ",\"p\":" << atm.p
+        << ",\"a\":" << atm.a << '}';
+    // Body-axis accelerations at the trim state (du/dt of body-frame velocity, not the inertial rate), for
+    // the J1 point check against JSBSim's accelerations/{u,w}dot and qdot.
+    const Vec<17> xd = s.model.deriv(0, tr.x, tr.u);
+    const Mat3 c_nb = dcm_from_quat(tr.x.segment<4>(6));
+    const Vec3 omega = tr.x.segment<3>(10), v_b = c_nb.transpose() * tr.x.segment<3>(3);
+    const Vec3 a_b = c_nb.transpose() * xd.segment<3>(3) - omega.cross(v_b);
+    out << ",\"accel_body\":{\"udot_mps2\":" << a_b(0) << ",\"vdot_mps2\":" << a_b(1)
+        << ",\"wdot_mps2\":" << a_b(2) << ",\"pdot_rps2\":" << xd(10) << ",\"qdot_rps2\":" << xd(11)
+        << ",\"rdot_rps2\":" << xd(12) << '}';
+  }
   out << '}';
   if (command == "linearize" && tr.ok) {
     const auto lm = linearize(s.model, tr);

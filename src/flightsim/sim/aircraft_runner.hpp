@@ -10,7 +10,8 @@ namespace flightsim::sim {
 struct AircraftRunOutput {
   std::vector<double> t;
   std::vector<Vec<17>> x;
-  std::vector<F16Input> u;  // input applied over the step that STARTS at t (last sample repeats the final one)
+  std::vector<F16Input>
+      u;  // input applied over the step that STARTS at t (last sample repeats the final one)
   StopReason reason = StopReason::FinalTime;
   double t_stop = 0;
   bool out_of_domain = false;  // any table lookup left its domain (extrapolated); see first_violation

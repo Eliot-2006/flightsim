@@ -161,7 +161,8 @@ AircraftScenario load_aircraft_scenario(const std::filesystem::path& path) {
   rc.integ = integrator_from_string(required<std::string>(sm, "integrator"));
   rc.dt = required<double>(sm, "dt_s");
   rc.t_final = required<double>(sm, "t_final_s");
-  rc.output_every = sm.contains("output_every") ? static_cast<int>(required<std::int64_t>(sm, "output_every")) : 1;
+  rc.output_every =
+      sm.contains("output_every") ? static_cast<int>(required<std::int64_t>(sm, "output_every")) : 1;
   rc.stop_at_ground = sm.contains("stop_at_ground") ? required<bool>(sm, "stop_at_ground") : true;
   if (rc.dt <= 0 || rc.t_final <= 0 || rc.output_every < 1) {
     throw std::runtime_error("sim: dt_s, t_final_s, output_every must be positive");

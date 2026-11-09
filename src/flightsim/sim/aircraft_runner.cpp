@@ -69,7 +69,8 @@ AircraftRunOutput run_aircraft(const AircraftScenario& s) {
     // M7 inserts the fixed-rate controller call here: it may overwrite `u` before the step.
     try {
       x = step(
-          rc.integ, [&](double tt, const Vec<17>& xx) { return model.deriv(tt, xx, u); }, t, x, rc.dt, true, stats);
+          rc.integ, [&](double tt, const Vec<17>& xx) { return model.deriv(tt, xx, u); }, t, x, rc.dt, true,
+          stats);
     } catch (const std::exception& e) {  // atmosphere altitude domain, non-finite inputs
       out.reason = StopReason::NonFinite;
       out.t_stop = time_at(k + 1);
@@ -100,14 +101,17 @@ AircraftRunOutput run_aircraft(const AircraftScenario& s) {
 
 namespace {
 constexpr const char* kCols[] = {
-    "t_s", "pN_m", "pE_m", "pD_m", "vN_mps", "vE_mps", "vD_mps", "q0", "q1", "q2", "q3", "p_radps", "q_radps", "r_radps",
-    "power_pct", "de_state_rad", "da_state_rad", "dr_state_rad", "V_mps", "alpha_rad", "beta_rad", "phi_rad",
-    "theta_rad", "psi_rad", "h_m", "mach", "qbar_Pa", "thrust_N", "throttle", "de_rad", "da_rad", "dr_rad",
-    "V_fps", "alpha_deg", "beta_deg", "phi_deg", "theta_deg", "psi_deg", "p_dps", "q_dps", "r_dps", "h_ft",
-    "pN_ft", "pE_ft", "de_deg", "da_deg", "dr_deg"};
+    "t_s",       "pN_m",         "pE_m",         "pD_m",         "vN_mps",  "vE_mps",    "vD_mps",
+    "q0",        "q1",           "q2",           "q3",           "p_radps", "q_radps",   "r_radps",
+    "power_pct", "de_state_rad", "da_state_rad", "dr_state_rad", "V_mps",   "alpha_rad", "beta_rad",
+    "phi_rad",   "theta_rad",    "psi_rad",      "h_m",          "mach",    "qbar_Pa",   "thrust_N",
+    "throttle",  "de_rad",       "da_rad",       "dr_rad",       "V_fps",   "alpha_deg", "beta_deg",
+    "phi_deg",   "theta_deg",    "psi_deg",      "p_dps",        "q_dps",   "r_dps",     "h_ft",
+    "pN_ft",     "pE_ft",        "de_deg",       "da_deg",       "dr_deg"};
 }  // namespace
 
-void write_aircraft_csv(const std::filesystem::path& path, const AircraftScenario& s, const AircraftRunOutput& out) {
+void write_aircraft_csv(const std::filesystem::path& path, const AircraftScenario& s,
+                        const AircraftRunOutput& out) {
   std::ofstream f(path);
   if (!f) {
     throw std::runtime_error("cannot write " + path.string());
@@ -127,11 +131,13 @@ void write_aircraft_csv(const std::filesystem::path& path, const AircraftScenari
     const auto ev = model.evaluate(out.t[i], x, u);
     const Vec<13> c = x13_from_x17(model, x, out.t[i]);
     const double d = units::deg, ft = units::ft;
-    const double row[] = {out.t[i], x(0), x(1), x(2), x(3), x(4), x(5), x(6), x(7), x(8), x(9), x(10), x(11), x(12),
-                          x(13), x(14), x(15), x(16), c(0), c(1), c(2), c(3), c(4), c(5), c(11), ev.mach, ev.qbar,
-                          ev.thrust, u.throttle, u.de, u.da, u.dr, c(0) / ft, c(1) / d, c(2) / d, c(3) / d,
-                          c(4) / d, c(5) / d, c(6) / d, c(7) / d, c(8) / d, c(11) / ft, c(9) / ft, c(10) / ft,
-                          u.de / d, u.da / d, u.dr / d};
+    const double row[] = {out.t[i],   x(0),       x(1),     x(2),     x(3),      x(4),     x(5),
+                          x(6),       x(7),       x(8),     x(9),     x(10),     x(11),    x(12),
+                          x(13),      x(14),      x(15),    x(16),    c(0),      c(1),     c(2),
+                          c(3),       c(4),       c(5),     c(11),    ev.mach,   ev.qbar,  ev.thrust,
+                          u.throttle, u.de,       u.da,     u.dr,     c(0) / ft, c(1) / d, c(2) / d,
+                          c(3) / d,   c(4) / d,   c(5) / d, c(6) / d, c(7) / d,  c(8) / d, c(11) / ft,
+                          c(9) / ft,  c(10) / ft, u.de / d, u.da / d, u.dr / d};
     for (std::size_t j = 0; j < std::size(row); ++j) {
       std::snprintf(buf, sizeof buf, "%.17g", row[j]);
       f << (j ? "," : "") << buf;
