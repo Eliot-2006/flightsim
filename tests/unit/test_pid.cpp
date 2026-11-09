@@ -65,3 +65,16 @@ TEST(Pid, RejectsInvalidInputs) {
   EXPECT_THROW(p.update(0, std::numeric_limits<double>::quiet_NaN(), .02), std::invalid_argument);
   EXPECT_THROW(p.reset(std::numeric_limits<double>::infinity()), std::invalid_argument);
 }
+TEST(Pid, PerSampleLimitsAreTrackedLikeConstructedLimits) {
+  // A stage downstream of the PID (the autopilot's combined theta bound) can be tighter than the gains'
+  // limits; back-calculation must then track that tighter bound exactly as if it were the gains' own.
+  Pid tight({0.5, 1, 0, 0, .1, -1, 1});
+  Pid wide({0.5, 1, 0, 0, .1, -10, 10});
+  for (int i = 0; i < 500; ++i) {
+    EXPECT_DOUBLE_EQ(wide.update(10, 0, .02, -1, 1), tight.update(10, 0, .02)) << i;
+  }
+  for (int i = 0; i < 50; ++i) {
+    EXPECT_DOUBLE_EQ(wide.update(-10, 0, .02, -1, 1), tight.update(-10, 0, .02)) << i;
+  }
+  EXPECT_THROW(wide.update(0, 0, .02, 1, -1), std::invalid_argument);
+}

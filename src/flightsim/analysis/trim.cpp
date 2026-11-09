@@ -41,9 +41,13 @@ TrimSolution solve_trim_system(const std::function<Vec3(const Vec3&)>& f, Vec3 z
 
 TrimResult trim_level(const F16Model& model, const TrimSpec& s) {
   TrimResult tr;
+  // Trim on ideal surfaces; an actuator-enabled model then starts with its actuator states at the trimmed
+  // positions (x17_from_x13 sets them from u), which makes their derivatives exactly zero.
+  F16Model ideal = model;
+  ideal.actuators = false;
   tr.message = "trim outside envelope or failed to converge";
   if (!std::isfinite(s.V) || s.V <= 0 || !std::isfinite(s.h) || !std::isfinite(s.gamma) ||
-      !std::isfinite(s.xcg) || s.xcg != model.xcg || model.actuators) {
+      !std::isfinite(s.xcg) || s.xcg != model.xcg) {
     return tr;
   }
   auto state = [&](const Vec3& z) {
@@ -53,18 +57,18 @@ TrimResult trim_level(const F16Model& model, const TrimSpec& s) {
     x(4) = z(0) + s.gamma;
     x(11) = s.h;
     const F16Input u{z(1), z(2), 0, 0};
-    x(12) = model.evaluate(0, x17_from_x13(model, x, u), u).power_cmd;
+    x(12) = ideal.evaluate(0, x17_from_x13(ideal, x, u), u).power_cmd;
     return x;
   };
   auto residual = [&](const Vec3& z) -> Vec3 {
-    const auto& d = model.data;
+    const auto& d = ideal.data;
     if (z(0) * d.rtod * units::deg < d.cz.x().front() || z(0) * d.rtod * units::deg > d.cz.x().back() ||
         z(1) < d.throttle_min || z(1) > d.throttle_max || z(2) < d.elevator.pos_min ||
         z(2) > d.elevator.pos_max) {
       throw std::domain_error("trim trial outside alpha/throttle/elevator envelope");
     }
-    const Vec<13> dx = f13(model, state(z), {z(1), z(2), 0, 0});
-    return Vec3(dx(0) / model.grav.gravity(s.h), dx(1), dx(7));
+    const Vec<13> dx = f13(ideal, state(z), {z(1), z(2), 0, 0});
+    return Vec3(dx(0) / ideal.grav.gravity(s.h), dx(1), dx(7));
   };
   try {
     const auto sol = solve_trim_system(residual, Vec3(5 * units::deg, 0.2, -units::deg));
