@@ -62,3 +62,29 @@ def test_full_pipeline_builds_every_figure(tmp_path):
         assert f'id="fig-{f.id}"' in html
     assert "<script src" not in html and "<link " not in html  # self-contained: Plotly JS inlined
     shutil.rmtree(tmp_path / "out")
+
+
+# WCAG 1.4.11 non-text contrast: every series colour must reach 3:1 against the surface it is drawn on.
+LIGHT_SURFACE, DARK_SURFACE = "#fcfcfb", "#1a1a19"  # keep equal to --bg in report.CSS
+NON_TEXT_MIN = 3.0  # WCAG 2.1 SC 1.4.11
+
+
+def _luminance(hex_color: str) -> float:
+    c = [int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a: str, b: str) -> float:
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+@pytest.mark.parametrize("colors,surface", [(plots.LIGHT, LIGHT_SURFACE), (report.DARK, DARK_SURFACE)])
+def test_series_colours_meet_non_text_contrast(colors, surface):
+    for c in colors + [plots.START_MARKER]:
+        assert contrast(c, surface) >= NON_TEXT_MIN, f"{c} on {surface}: {contrast(c, surface):.2f}"
+
+
+def test_surfaces_match_css():
+    assert f"--bg:{LIGHT_SURFACE}" in report.CSS and f"--bg:{DARK_SURFACE}" in report.CSS

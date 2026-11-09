@@ -12,9 +12,10 @@ from plotly.subplots import make_subplots
 
 from .metrics import INTEGRATORS, STUDY, hn, read_csv, trajectory
 
-# Categorical slots (dataviz reference palette, light mode; report.py swaps in the dark steps). Colour follows
+# Categorical slots (dataviz palette, slots 2-4 darkened to reach 3:1 on the light surface; report.py swaps in the dark steps). Colour follows
 # the integrator, never its rank in a panel.
-LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#6250d6"]
+LIGHT = ["#2a78d6", "#e0561a", "#0f8a5f", "#b8860b", "#6250d6"]  # each >= 3:1 on #fcfcfb (test_report.py)
+START_MARKER = "#888888"
 SLOT = {name: i for i, name in enumerate(INTEGRATORS)}
 DASH = {"euler": "solid", "rk4": "solid", "symplectic_euler": "dash", "lie_euler": "dot", "rkmk4": "dashdot"}
 LABEL = {"euler": "Euler", "rk4": "RK4", "symplectic_euler": "Symplectic Euler", "lie_euler": "Lie–Euler",
@@ -173,7 +174,7 @@ def t4(out: Path) -> go.Figure:
     for name in ("euler", "symplectic_euler", "rk4"):
         tr = trajectory(out, f"rb_t4_{name}")
         fig.add_trace(go.Scatter(x=tr["pN_m"], y=tr["vN_mps"], name=LABEL[name], mode="lines", **_line(name)))
-    fig.add_trace(go.Scatter(x=[1], y=[0], mode="markers", name="start", marker=dict(size=9, color="#888"),
+    fig.add_trace(go.Scatter(x=[1], y=[0], mode="markers", name="start", marker=dict(size=9, color=START_MARKER),
                              meta="ref"))
     fig.update_xaxes(title_text="position p_N [m]")
     fig.update_yaxes(title_text="velocity v_N [m/s]", scaleanchor="x", scaleratio=1)

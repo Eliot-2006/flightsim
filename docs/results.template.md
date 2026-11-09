@@ -47,7 +47,7 @@ At h = {{t4.h}} s over {{t4.t_final:.0f}} s the phase radius on the ω = 1 rad/s
 
 ## Performance
 
-Release build, single thread, {{bench.cpus}} logical CPUs at {{bench.mhz:.0f}} MHz as reported by Google Benchmark. PRD §11 targets are reported, not gated.
+Release build, single thread, {{bench.cpus}} logical CPUs (Google Benchmark reports no usable clock speed on this machine). PRD §11 targets are reported, not gated.
 
 | Integrator | Rigid-body step (gravity + quadratic drag) [ns] | R3 10 s run, h = {{bench.r3run.h}} s [µs] |
 |---|---|---|

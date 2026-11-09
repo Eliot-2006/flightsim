@@ -136,4 +136,3 @@ From `PROGRESS.md` and M2/M3 work:
 - Observed orders are measured on eight step levels with reference-accuracy checks; cases without a closed-form attitude (R3 attitude, R4) rely on the fine RK4 reference.
 - Zero-allocation is asserted for the RK4 loop with a quadratic-drag force model; other integrators and force combinations are not separately tested.
 - Benchmark numbers in `docs/results.md` are for one machine and one compiler (recorded there); they are reported, not gated.
-- The report's light-mode palette has two series colours (aqua, amber) below 3:1 contrast on the surface; lines also differ by dash pattern and the drift figure is accompanied by a table.

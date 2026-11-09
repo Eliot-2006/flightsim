@@ -18,7 +18,7 @@ Spin about the intermediate axis flips: the body rate q changes sign {{r4.sign_c
 
 ![R4 Dzhanibekov flip: body rates and inertial angular momentum](docs/img/r4.png)
 
-A rigid-body RK4 step with gravity and quadratic drag costs {{bench.step.rk4.ns:.0f}} ns on the benchmark machine (Euler {{bench.step.euler.ns:.0f}} ns, RKMK4 {{bench.step.rkmk4.ns:.0f}} ns). The step loop performs zero heap allocations (asserted by `alloc_tests`).
+A rigid-body RK4 step with gravity and quadratic drag costs {{bench.step.rk4.ns:.0f}} ns ({{env.build_type}} build, {{env.compiler}}, {{bench.cpus}} logical CPUs (Google Benchmark reports no usable clock speed on this machine), single thread; Euler {{bench.step.euler.ns:.0f}} ns, RKMK4 {{bench.step.rkmk4.ns:.0f}} ns). The step loop performs zero heap allocations (asserted by `alloc_tests`).
 
 ## Quickstart
 
