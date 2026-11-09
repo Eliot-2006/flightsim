@@ -34,12 +34,24 @@ RunResult integrate_case(const CaseDef& c, Integrator integ, double h, bool reno
     return rigid_body_deriv(x, c.mp, fm, c.g_N);
   };
   Vec<13> x = c.x0;
+  const double E0 = c.energy ? c.energy(c.x0) : rotational_energy(c.x0, c.mp);
+  const Vec3 H0 = angular_momentum_N(c.x0, c.mp);
+  const double Hscale = H0.norm();
+  RunResult result{x, 0, 0, 0, std::abs(rb::quat(x).norm() - 1)};
   StepStats stats;
   for (long i = 0; i < n; ++i) {
     x = step(integ, f, static_cast<double>(i) * h, x, h, renormalize, stats);
     if (!x.allFinite()) throw std::runtime_error(c.name + ": non-finite state during integration");
+    const double E = c.energy ? c.energy(x) : rotational_energy(x, c.mp);
+    if (E0 != 0) result.max_energy_drift = std::max(result.max_energy_drift, std::abs(E / E0 - 1));
+    if (Hscale > 0)
+      result.max_momentum_drift =
+          std::max(result.max_momentum_drift, (angular_momentum_N(x, c.mp) - H0).norm() / Hscale);
+    result.max_qnorm_drift = std::max(result.max_qnorm_drift, std::abs(rb::quat(x).norm() - 1));
   }
-  return {x, stats.nfev};
+  result.x_final = x;
+  result.nfev = stats.nfev;
+  return result;
 }
 
 namespace {
@@ -187,10 +199,10 @@ void write_convergence_study(const std::filesystem::path& study_path, const std:
   std::ostringstream csv, comparison;
   csv << std::setprecision(17)
       << "case,integrator,h,err_pos,err_vel,err_att,err_omega,err_E,err_H,nfev,err_qnorm,renormalize\n";
-  comparison << std::setprecision(17) << "case,integrator,h,renormalize,err_qnorm,err_E,err_H,nfev\n";
+  comparison << std::setprecision(17)
+             << "case,integrator,h,renormalize,max_err_qnorm,max_err_E,max_err_H,nfev\n";
   toml::array orders;
   bool all_passed = true;
-  std::set<std::string> compared;
   for (const auto& study : studies)
     for (const auto& c : study.cases) {
       for (auto method : study.integrators) {
@@ -249,19 +261,23 @@ void write_convergence_study(const std::filesystem::path& study_path, const std:
               "Order 1 is the unprojected quaternion norm error; constant-rate Euler angle is order 2.");
         orders.push_back(std::move(result));
       }
-      if (c.name.starts_with("R") && compared.insert(c.name).second) {
-        const double E0 = rotational_energy(c.x0, c.mp);
-        const Vec3 H0 = angular_momentum_N(c.x0, c.mp);
-        for (auto method : {Integrator::Euler, Integrator::RK4, Integrator::RKMK4}) {
-          const auto r = integrate_case(c, method, .01, false);
-          comparison << c.name << ',' << to_string(method) << ",0.01,false,"
-                     << std::abs(rb::quat(r.x_final).norm() - 1) << ','
-                     << std::abs(rotational_energy(r.x_final, c.mp) / E0 - 1) << ','
-                     << (angular_momentum_N(r.x_final, c.mp) - H0).norm() / H0.norm() << ',' << r.nfev
-                     << '\n';
-        }
+    }
+  // PRD 8.3: all rotational cases/methods, trajectory maxima, both projection policies for Euler/RK4.
+  for (auto factory : {case_R1, case_R2, case_R3, case_R4, case_R5}) {
+    const auto c = factory();
+    for (auto method : {Integrator::Euler, Integrator::RK4, Integrator::SymplecticEuler, Integrator::LieEuler,
+                        Integrator::RKMK4}) {
+      const bool lie = method == Integrator::LieEuler || method == Integrator::RKMK4;
+      for (bool renormalize : {false, true}) {
+        if (lie && renormalize) continue;
+        if (method == Integrator::SymplecticEuler && !renormalize) continue;
+        const auto r = integrate_case(c, method, .01, renormalize);
+        comparison << c.name << ',' << to_string(method) << ",0.01," << renormalize << ','
+                   << r.max_qnorm_drift << ',' << r.max_energy_drift << ',' << r.max_momentum_drift << ','
+                   << r.nfev << '\n';
       }
     }
+  }
   toml::table result{{"all_assertions_passed", all_passed}, {"orders", std::move(orders)}};
   std::ostringstream json;
   json << toml::json_formatter{result} << '\n';

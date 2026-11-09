@@ -17,6 +17,7 @@ ErrorNorms state_error(const Vec<13>& x, const Vec<13>& ref);
 struct RunResult {
   Vec<13> x_final;
   long nfev;
+  double max_energy_drift = 0, max_momentum_drift = 0, max_qnorm_drift = 0;
 };
 // Fixed-step integration to c.t_final; h must be positive, finite and divide t_final.
 RunResult integrate_case(const CaseDef& c, Integrator integ, double h, bool renormalize = true);

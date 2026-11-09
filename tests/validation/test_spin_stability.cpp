@@ -160,3 +160,23 @@ TEST(Convergence, T4EnergyIncludesSpringPotential) {
   // Same endpoint and arithmetic: 1e-14 relative invariant drift comparison (~45 ulp).
   EXPECT_NEAR(rows.front().err_E, std::abs(energy(x) / energy(c.x0) - 1), 1e-14);
 }
+
+TEST(Convergence, ConservationTracksTrajectoryMaxima) {
+  auto c = case_R1();
+  c.mp.inertia = Mat3::Identity();
+  rb::omega(c.x0) = Vec3(0, 0, 1);
+  c.t_final = 1;
+  c.forces = {[](double t, const Vec<13>&) {
+    ForceMoment fm;
+    fm.M_B.z() = std::sin(2 * std::numbers::pi * t);
+    return fm;
+  }};
+  const auto result = integrate_case(c, Integrator::RK4, .001);
+  const double pi = std::numbers::pi;
+  // w3=1+(1-cos(2*pi*t))/(2*pi), peaking at t=.5, returning to 1 at t=1.
+  // RK4's sinusoidal quadrature bound O((2*pi)^4*h^4/180), propagated to E/H, is below 1e-10.
+  EXPECT_NEAR(result.max_energy_drift, 2 / pi + 1 / (pi * pi), 1e-10);
+  EXPECT_NEAR(result.max_momentum_drift, 1 / pi, 1e-10);
+  EXPECT_LE(std::abs(rotational_energy(result.x_final, c.mp) / rotational_energy(c.x0, c.mp) - 1), 1e-10);
+  EXPECT_GE(result.max_qnorm_drift, std::abs(rb::quat(result.x_final).norm() - 1));
+}
