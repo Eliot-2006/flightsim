@@ -19,6 +19,7 @@ if(NOT FLIGHTSIM_GIT_SHA)
 endif()
 
 add_library(flightsim_core STATIC
+  src/flightsim/control/pid.cpp
   src/flightsim/version.cpp
   src/flightsim/math/quat.cpp
   src/flightsim/math/elliptic.cpp
@@ -58,6 +59,7 @@ enable_testing()
 include(GoogleTest)
 
 add_executable(unit_tests
+  tests/unit/test_pid.cpp
   tests/unit/test_trim.cpp
   tests/unit/test_aircraft_runner.cpp
   tests/unit/test_smoke.cpp

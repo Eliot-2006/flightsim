@@ -59,6 +59,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # Control design consumes the real CLI Jacobian; report tests also run benchmarks.
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: cmake --preset release
+      - run: cmake --build --preset release --target flightsim bench_flightsim -j 2
       - run: cd python && uv sync --frozen && uv run pytest
 
   bench:
