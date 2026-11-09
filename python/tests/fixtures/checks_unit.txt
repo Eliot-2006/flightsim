@@ -1,0 +1,30 @@
+Running main() from /Users/eliotboda/.paradev/worktrees/flightsim/m8-polish/build/release/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = F16Model.A1CheckCase
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from F16Model
+[ RUN      ] F16Model.A1CheckCase
+A1 vt_dot actual=-75.2372319164 expected=-75.23724 relative_error=1.07441490812e-07
+A1 alpha_dot actual=-0.881349080016 expected=-0.8813491 relative_error=2.26748395484e-08
+A1 beta_dot actual=-0.475998994189 expected=-0.475999 relative_error=1.22076451321e-08
+A1 phi_dot actual=2.50573461578 expected=2.505734 relative_error=2.45747288158e-07
+A1 theta_dot actual=0.325082041633 expected=0.325082 relative_error=1.28067980059e-07
+A1 psi_dot actual=2.14592617972 expected=2.145926 relative_error=8.37512206698e-08
+A1 p_dot actual=12.6242658396 expected=12.62679 relative_error=0.000199905157675
+A1 q_dot actual=0.964904695603 expected=0.9649671 relative_error=6.46699739698e-05
+A1 r_dot actual=0.580915710967 expected=0.5809759 relative_error=0.000103599879618
+A1 pn_dot actual=342.443903052 expected=342.4439 relative_error=8.91348920145e-09
+A1 pe_dot actual=-266.770681495 expected=-266.7707 relative_error=6.93668893077e-08
+A1 h_dot actual=248.12411563 expected=248.1241 relative_error=6.29911401273e-08
+A1 power_dot actual=-58.69 expected=-58.68999 relative_error=1.70386806951e-07
+A1 moments_lbf_ft= 114613.569206  19914.4306842 -2258.36769288
+A1 rounded_c1_c9_rates= 12.6267851355 0.964966917861 0.580975825351
+A1 u_dot actual=100.853628546 expected=100.8536 relative_error=2.83042943527e-07
+A1 v_dot actual=-218.30802213 expected=-218.308 relative_error=1.0136927768e-07
+A1 w_dot actual=-437.03988643 expected=-437.0399 relative_error=3.10501601771e-08
+[       OK ] F16Model.A1CheckCase (1 ms)
+[----------] 1 test from F16Model (1 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (1 ms total)
+[  PASSED  ] 1 test.

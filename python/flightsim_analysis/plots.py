@@ -225,7 +225,7 @@ FIGURES = [
            "Relative drift of rotational energy and |H_N| for the torque-free asymmetric body R3 at fixed h = 0.02 s. "
            "Zeros are drawn at 1e-17. Euler and Lie–Euler drift secularly; RK4 and RKMK4 drift by many orders of magnitude less.",
            "validation_tests: Rotational.HNConservedRk4, Rotational.R3Rkmk4Order4, Rotational.R3LieEulerOrder1 (H-error orders)",
-           drift, headline=True),
+           drift),
     Figure("qnorm", "Quaternion-norm drift with and without renormalization",
            "|‖q‖ − 1| over time on R3. Without projection Euler and RK4 drift away from unit norm; renormalization "
            "pins it at roundoff; RKMK4 preserves the norm by construction.",
@@ -309,7 +309,7 @@ FIGURES.extend([
            "Deviation from each simulator's own trim (502 ft/s, 10,000 ft) for ±1° elevator pulses at 1–2 s and 2–3 s. "
            "The curves overlap to within the line width; the numerical differences are in docs/results.md.",
            "python/tests/test_jsbsim_compare.py and `python -m jsbsim_compare.compare --check` (max difference ≤ 2 % of peak)",
-           _j3_overlay("elev_doublet", ["V", "alpha", "q", "theta"])),
+           _j3_overlay("elev_doublet", ["V", "alpha", "q", "theta"]), headline=True),
     Figure("j3-aileron", "J3: aileron pulse, flightsim vs JSBSim",
            "Deviation from own trim for a 2° aileron pulse at 1–2 s: sideslip, roll rate, yaw rate and bank angle.",
            "python/tests/test_jsbsim_compare.py and `python -m jsbsim_compare.compare --check`",
@@ -452,7 +452,7 @@ FIGURES.extend([
            "Closed-loop response of the C++ runner (50 Hz autopilot, actuator and engine lag) against the design.py linear "
            "prediction (linear_steps.json perturbations from trim, shifted to the command time). The two agree to a fraction of a percent of the step.",
            "validation_tests: F16Autopilot.C1AltitudeStep100ft (overshoot ≤ 10 %, 2 % settling ≤ 25 s, steady-state ≤ 1 ft, airspeed deviation ≤ 5 ft/s)",
-           _overlay_builder("c1", "C1", 1.0), headline=True),
+           _overlay_builder("c1", "C1", 1.0)),
     Figure("c2-overlay", "C2: +1,000 ft altitude step, nonlinear vs scaled linear prediction",
            "The saturating +1,000 ft step against the linear C1 prediction multiplied by 10 (the linear model is linear but has no saturation). "
            "The gap is the effect of the ±15° pitch-command limit, throttle limit and back-calculation.",
