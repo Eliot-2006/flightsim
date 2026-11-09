@@ -84,6 +84,7 @@ def build(out: Path) -> dict:
     m["r4.omega2.min"], m["r4.omega2.max"] = min(tr["q_radps"]), max(tr["q_radps"])
     m["r4.dE"], m["r4.dH"] = max_rel_drift(tr["E_J"]), max_vec_rel_drift(hn(tr))
     m["r4.t_final"] = tr["t_s"][-1]
+    m["r4.h"] = meta["dt_s"]
 
     # --- T4 phase radius on the omega = 1 rad/s axis (north), final / initial ---
     for name in ("euler", "symplectic_euler", "rk4"):

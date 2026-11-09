@@ -16,10 +16,11 @@ FIXTURE = Path(__file__).parent / "fixtures" / "metrics.json"
 PLACEHOLDER = re.compile(r"\{\{.*?\}\}")
 
 
-def test_render_fills_every_placeholder_in_real_template(tmp_path):
+@pytest.mark.parametrize("template", ["results.template.md", "README.template.md"])
+def test_render_fills_every_placeholder_in_real_template(tmp_path, template):
     m = json.loads(FIXTURE.read_text())
-    out = tmp_path / "results.md"
-    report.write_results(m, ROOT / "docs" / "results.template.md", out)
+    out = tmp_path / "rendered.md"
+    report.write_results(m, ROOT / "docs" / template, out)
     text = out.read_text()
     assert not PLACEHOLDER.search(text)
     assert "{{" not in text and "}}" not in text

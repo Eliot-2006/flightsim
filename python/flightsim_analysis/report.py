@@ -1,4 +1,4 @@
-"""Write out/metrics.json, out/index.html (static, Plotly JS inlined) and docs/results.md.
+"""Write out/metrics.json, out/index.html (static, Plotly JS inlined), docs/results.md and README.md.
 
     python -m flightsim_analysis.report [--out out] [--png-dir docs/img]
 """
@@ -148,6 +148,7 @@ def main(argv=None) -> int:
     (out / "metrics.json").write_text(json.dumps(m, indent=2, sort_keys=True) + "\n")
     (out / "index.html").write_text(build_html(out, m))
     write_results(m, ROOT / "docs" / "results.template.md", Path(args.results))
+    write_results(m, ROOT / "docs" / "README.template.md", ROOT / "README.md")
     if args.png_dir:
         Path(args.png_dir).mkdir(parents=True, exist_ok=True)
         for f in plots.FIGURES:
