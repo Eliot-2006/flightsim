@@ -468,6 +468,8 @@ All cases in §8.2–§8.5 and J-series criteria are encoded as tests with the t
 
 Additionally asserted: RK4/RKMK4 on R1 reproduce the exact solution to ≤ 1e-12 rad (RKMK4) and show order 4 (RK4).
 
+**Amendment (M2 finding, 2026-11-08):** on R1 (constant ω about a principal axis), Euler *with* renormalization has observed **attitude** order 2, not 1. Each step multiplies q by `(1 + ½hω)`, whose normalized form is an exact rotation about ω by `2·atan(h|ω|/2)`, so only the angle magnitude is wrong, at O(h³) per step. Euler's first-order behavior on R1 is therefore asserted on the unprojected quaternion norm error; the attitude order is reported, and explained in `docs/design.md`.
+
 ### 10.4 Tolerance policy
 Every tolerance carries a comment giving its origin: analytic error bound, observed error × safety factor (≤ 10×), or published precision. Changing a tolerance requires updating that comment and `docs/design.md`.
 
