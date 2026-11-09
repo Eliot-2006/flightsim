@@ -5,7 +5,7 @@
 | Status | Draft for approval |
 | Date | 2026-11-08 |
 | Owner | Eliot Boda |
-| Language / build | C++20, CMake ≥ 3.25 |
+| Language / build | C++20, CMake ≥ 3.28 |
 | Next step after approval | Implementation plan per milestone (superpowers:writing-plans) |
 
 ---

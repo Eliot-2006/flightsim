@@ -6,7 +6,7 @@
 
 **Architecture:** One static library `flightsim_core` (folders = modules), pure derivative functions over fixed-size Eigen vectors, integrators as free function templates, a thin CLI `flightsim`, GoogleTest suites split into `unit` and `validation` binaries, Python (uv-managed) for plots, reports, control design, and JSBSim.
 
-**Tech Stack:** C++20, CMake ≥ 3.25 + presets, Eigen 3.4.0, GoogleTest 1.15.2, Google Benchmark 1.9.1, toml++ 3.4.0 (all FetchContent with URL_HASH); Python 3.12 via uv (numpy, scipy, plotly, kaleido, control, jsbsim, pytest).
+**Tech Stack:** C++20, CMake ≥ 3.28 + presets, Eigen 3.4.0, GoogleTest 1.15.2, Google Benchmark 1.9.1, toml++ 3.4.0 (all FetchContent with URL_HASH); Python 3.12 via uv (numpy, scipy, plotly, kaleido, control, jsbsim, pytest).
 
 **Spec:** `docs/PRD.md` (approved). Section numbers below (§x.y) refer to it. Executors read both.
 

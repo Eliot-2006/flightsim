@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": {"major": 3, "minor": 25, "patch": 0},
+  "cmakeMinimumRequired": {"major": 3, "minor": 28, "patch": 0},
   "configurePresets": [
     {"name": "base", "hidden": true, "generator": "Ninja", "binaryDir": "${sourceDir}/build/${presetName}"},
     {"name": "dev", "inherits": "base", "cacheVariables": {"CMAKE_BUILD_TYPE": "Debug"}},

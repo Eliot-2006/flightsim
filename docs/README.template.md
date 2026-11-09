@@ -22,7 +22,7 @@ A rigid-body RK4 step with gravity and quadratic drag costs {{bench.step.rk4.ns:
 
 ## Quickstart
 
-Requires CMake ≥ 3.25, a C++20 compiler, Ninja and [uv](https://docs.astral.sh/uv/). Dependencies (Eigen, GoogleTest, Google Benchmark, toml++) are fetched at configure time with pinned hashes.
+Requires CMake ≥ 3.28, a C++20 compiler, Ninja and [uv](https://docs.astral.sh/uv/). Dependencies (Eigen, GoogleTest, Google Benchmark, toml++) are fetched at configure time with pinned hashes.
 
 ```sh
 scripts/demo.sh        # configure + build (release), ctest, uv sync --frozen, run, report
