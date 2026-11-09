@@ -3,7 +3,7 @@
 Living log for the 6-DOF flight dynamics simulator. Spec: `docs/PRD.md`. Plan: `docs/superpowers/plans/2026-11-08-flightsim.md`.
 
 ## Current milestone
-M5 (trim + linearization) next; M6a (JSBSim model generator) running. Done: M0–M4.
+M6 (JSBSim comparison) and M7 (autopilot) next. Done: M0–M5, Task 6.2.
 
 ## Orchestration
 | Task | Track | Agent (model) | Branch / workspace | Status | Result |
@@ -13,7 +13,8 @@ M5 (trim + linearization) next; M6a (JSBSim model generator) running. Done: M0�
 | M2 rotational + integrators | A | Codex (gpt-6.1-sol, high) | m2-rotational | completed, merged | 88 tests; 32/32 asserted orders in bounds (Euler ≈1.00–1.05, RK4/RKMK4 ≈4.00–4.01, symplectic 1.01) |
 | M3 tooling, report, docs | A | Claude (Sonnet) | m3-tooling | completed, merged | demo.sh 28 s from clean clone; 113 tests; contrast ≥3:1 enforced by test |
 | M4b wind, F-16 model, consistency | D | Codex (gpt-6.1-sol, high) | m4b-f16-model | completed, merged | A1 all 13 components ≤ 2e-4 rel (ṗ/ṙ gap = S&L rounded inertia coefficients); B1/B2 residuals 6e-11/3e-10 (order 4.0); S1 symmetrized 2e-16; aircraft RK4 order ≈2.2 |
-| M6a JSBSim model generator | F | Claude (Sonnet) | m6a-jsbsim-model | running | — |
+| M6a JSBSim model generator | F | Claude (Sonnet) | m6a-jsbsim-model | completed, merged | Independent Python S&L evaluation vs JSBSim aero/thrust/mass ≤1e-9 rel; JSBSim trims at 0 and 10k ft; results at dt 1/2400 and 1/4800 committed |
+| M5 trim + linearization | E | Codex (gpt-6.1-sol, high) | m5-trim-linear | completed, merged | TR1: throttle +3.5e-5, δe +2e-5°, α +9e-7 rad (level_35); LN1 eigenvalue diffs ≤3.4e-4 1/s; LN2 ratio 96.3; LN3 ε=6e-6 flat |
 | 4.2–4.3 interp, data loader, atmosphere | D | Claude (Sonnet) | m4a-data-atmos | completed, merged | 75 tests at merge; US76 vs NASA-TM-X-74335 ≤1e-4 |
 | 4.0 JSBSim spike | B | Claude (Sonnet) | spike-jsbsim | completed, merged | Primary §8.6 approach feasible (jsbsim 1.3.3); see spikes/jsbsim/FINDINGS.md |
 | 4.1 F-16 data + reference values | C | Codex (gpt-6.1-sol) | f16-data | completed, merged | 3 sources (AeroBench, Archimedes, UMN) + TP-1538 visual checks; 22 raw-A cells resolved; A1/TR1/LN1 single-lineage (Archimedes) |
@@ -23,7 +24,7 @@ Integration branch: `flight-dynamics-prd-81fca11f` → `main`. The owner opened 
 ## Provider / quota notes
 - Codex: GPT-6.1 Terra is not in the local model catalog; using `gpt-6.1-sol` (strongest available).
 - Gemini CLI available (0.67.0) for optional second-opinion reviews. Antigravity not installed.
-- Codex shows its 5h limit in the TUI (30% left at 16:04, resets 16:59); Claude/Gemini expose none.
+- Codex shows its 5h limit in the TUI (30% left at 16:04, reset 16:59; 50% left at 17:49, resets 22:00); Claude/Gemini expose none.
 - No other provider exposes remaining quota to this orchestrator; usage is kept conservative (≤ 3 concurrent workers, reviews only on math-heavy merges).
 
 ## Verification log
@@ -31,6 +32,7 @@ _(orchestrator-run checks only; worker claims are not recorded here until re-run
 - 2026-11-08 M0: clean `release` configure+build+ctest in m0 worktree: 3/3 pass; `uv run pytest`: 1 passed.
 - 2026-11-08 M1: release build, ctest 52/52 (41 unit, 11 validation); CLI run writes CSV+JSON; reviewed quat/EOM/RK4 by hand. CI (Linux gcc/clang dev+release, asan, format, python, bench) green on M0 commit.
 - 2026-11-08 M2+M4a merged: integration release build ctest 111/111 (75 unit, 36 validation); `flightsim converge` orders.json re-generated and inspected.
+- 2026-11-08 M5+M6a merged: release ctest 159/159 (AppleClang), 159/159 (GCC 13 container); `scripts/demo.sh` exit 0; `uv run pytest` 23 passed.
 - 2026-11-08 M4: integration release ctest 139/139 (AppleClang) and 139/139 (GCC 13 container).
 - 2026-11-08 M3: fresh clone `scripts/demo.sh` exit 0 in 28.4 s, 113/113 tests; figures inspected (convergence slopes, R4 flip with constant H_N).
 - 2026-11-08 Local GCC 13 container check (`gcc_check.sh`) added to the merge routine; integration branch passes.
@@ -53,6 +55,7 @@ _(orchestrator-run checks only; worker claims are not recorded here until re-run
 - GCC-only -Wdangling-else failures from unbraced gtest macros (twice) → braced; worker rules updated; local GCC 13 container check before every merge.
 - CMake 3.25.1 mis-parses `SYSTEM` in FetchContent_Declare → minimum raised to 3.28 (tested in CI and container).
 - M4b BLOCKED (correctly): planned 60 s open-loop fixture left the α table domain at 25 s; same-method 1e-3 reference rule infeasible for the non-smooth aircraft → PRD amended (20 s in-domain run; 10× reference rule for aircraft; 60 s closed-loop budget check in M7).
+- M5 BLOCKED on LN2 breakpoint monitor (β crosses 0 via rotor coupling) → criterion clarified (inactive/smooth crossings excluded with in-test proofs); ratio bound unchanged.
 - Codex 5h limit hit during M4b → kept model, resumed after reset.
 - JSBSim has no RK4; stock f16 FCS overrides direct surface writes → PRD §8.6 amendment (J4 trim-only).
 
