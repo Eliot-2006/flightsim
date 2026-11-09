@@ -20,7 +20,7 @@ constexpr double kThetaTrim = 3.367607324 * 3.14159265358979323846 / 180;
 constexpr double kDeTrim = -0.656145669 * 3.14159265358979323846 / 180;
 constexpr double kThrottleTrim = 0.168247601;
 const F16Input kTrim{kThrottleTrim, kDeTrim, 0, 0};
-const ApMeasurement kSteady{3048, 153.0096, kThetaTrim, 0};
+const ApMeasurement kSteady{3048, 153.0096, kThetaTrim, 0, kDeTrim};  // elevator resting at trim
 const ApCommand kHold{3048, 153.0096};
 }  // namespace
 
@@ -145,6 +145,29 @@ TEST(Autopilot, AntiwindupFlagControlsBackCalculation) {
   };
   // Back-calculation drags the integrator down while saturated; without it the integrator keeps growing.
   EXPECT_LT(saturate_then_release(true), saturate_then_release(false));
+}
+
+TEST(Autopilot, PitchRateBackCalculationTracksTheMeasuredElevator) {
+  // The pitch-rate PI tracks the applied elevator (the actuator state), not its own command. With zero error
+  // and the elevator held 5 deg from the command, back-calculation relaxes the command toward it with time
+  // constant tt; without anti-windup it stays at trim.
+  const auto g = committed();
+  const double offset = 5 * 3.14159265358979323846 / 180;
+  const auto run = [&](bool antiwindup) {
+    Autopilot ap(g, antiwindup);
+    ap.engage(kSteady, kTrim);
+    ApMeasurement lagging = kSteady;
+    lagging.de = kDeTrim + offset;
+    double de = 0;
+    for (int i = 0; i < 250; ++i) {  // 5 s
+      de = ap.update(lagging, kHold).u.de;
+    }
+    return de;
+  };
+  // Output n (1-based) is de_trim + offset (1 - (1 - T/tt)^(n-1)): the reset sample outputs trim exactly.
+  const double expected = kDeTrim + offset * (1 - std::pow(1 - 1 / (g.rate_hz * g.pitch_rate.tt), 249));
+  EXPECT_NEAR(run(true), expected, 1e-12);
+  EXPECT_DOUBLE_EQ(run(false), kDeTrim);
 }
 
 TEST(Autopilot, UpdateBeforeEngageThrows) {

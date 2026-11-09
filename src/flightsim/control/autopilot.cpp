@@ -98,7 +98,7 @@ ApOutput Autopilot::update(const ApMeasurement& m, const ApCommand& cmd) {
       std::clamp(theta_pi + crossfeed, lo, hi);  // exact design equation; guards roundoff/extremes
   out.q_cmd = pitch_.update(out.theta_cmd, m.theta, T);
   out.u = u_trim_;
-  out.u.de = pitch_rate_.update(out.q_cmd, m.q, T);
+  out.u.de = pitch_rate_.update(out.q_cmd, m.q, T, g_.pitch_rate.umin, g_.pitch_rate.umax, m.de);
   out.u.throttle = airspeed_.update(cmd.V, m.V, T);
   return out;
 }

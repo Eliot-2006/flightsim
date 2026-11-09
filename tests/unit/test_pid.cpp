@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -77,4 +78,44 @@ TEST(Pid, PerSampleLimitsAreTrackedLikeConstructedLimits) {
     EXPECT_DOUBLE_EQ(wide.update(-10, 0, .02, -1, 1), tight.update(-10, 0, .02)) << i;
   }
   EXPECT_THROW(wide.update(0, 0, .02, 1, -1), std::invalid_argument);
+}
+TEST(Pid, ProportionalOnlyLoopKeepsNoBiasAfterSaturationOrReset) {
+  // ki == 0 (the autopilot's pitch loop) has no integrator: neither back-calculation while saturated nor a
+  // bumpless reset may store an offset, which nothing would ever integrate away again.
+  Pid p({2, 0, 0, 0, .5, -1, 1});
+  for (int i = 0; i < 500; ++i) {
+    EXPECT_DOUBLE_EQ(p.update(10, 0, .02), 1);  // 10 s saturated
+  }
+  EXPECT_DOUBLE_EQ(p.update(.2, 0, .02), .4);  // out of saturation: exactly kp e
+  p.reset(.7);
+  EXPECT_DOUBLE_EQ(p.update(.1, 0, .02), .7);  // the reset output, for that sample only
+  EXPECT_DOUBLE_EQ(p.update(.1, 0, .02), .2);  // then kp e again, no stored bias
+}
+TEST(Pid, BackCalculationOnAppliedOutputBoundsIntegratorUnderRateLimit) {
+  // A rate-limited actuator (0.5/s) lags a PI whose command never reaches its own +-10 limits. Tracking the
+  // command saturation sees nothing to correct, so that integrator winds up as ki e t. Tracking the applied
+  // (actuator) output holds the command within ki e tt (= 0.1) of the actuator.
+  const PidGains g{0, 1, 0, 0, .1, -10, 10};
+  Pid command(g), applied(g);
+  double actuator = 0, c = 0, u = 0;
+  for (int i = 0; i < 250; ++i) {  // 5 s at 50 Hz, constant unit error
+    c = command.update(1, 0, .02);
+    u = applied.update(1, 0, .02, -10, 10, actuator);
+    actuator += std::clamp(u - actuator, -.5 * .02, .5 * .02);
+  }
+  EXPECT_NEAR(actuator, 2.5, 1e-12);  // rate-limited the whole time
+  EXPECT_NEAR(c, 5, 1e-12);           // wound up: ki e t
+  EXPECT_GT(u - actuator, 0);
+  EXPECT_LT(u - actuator, .1);  // bounded by ki e tt
+  // Reversing the error takes the applied-tracking command below the actuator within 0.2 s; the wound-up
+  // one is still 2 above it.
+  for (int i = 0; i < 10; ++i) {
+    c = command.update(-1, 0, .02);
+    u = applied.update(-1, 0, .02, -10, 10, actuator);
+    actuator += std::clamp(u - actuator, -.5 * .02, .5 * .02);
+  }
+  EXPECT_LT(u, actuator);
+  EXPECT_GT(c, actuator + 2);
+  EXPECT_THROW(applied.update(0, 0, .02, -1, 1, std::numeric_limits<double>::quiet_NaN()),
+               std::invalid_argument);
 }

@@ -61,16 +61,17 @@ AircraftRunOutput run_aircraft(const AircraftScenario& s) {
 
   // Closed loop: the controller is the one stateful component. It runs OUTSIDE every derivative evaluation,
   // once per sample before the integration step that starts on a sample instant, and its output is held.
-  const auto measure = [&](double t, const Vec<17>& xs) {
+  // `held` is the input applied over the step that ends here; with ideal surfaces it is the applied elevator.
+  const auto measure = [&](double t, const Vec<17>& xs, const F16Input& held) {
     const Vec<13> c = x13_from_x17(model, xs, t);
-    return ApMeasurement{c(11), c(0), c(4), c(7)};
+    return ApMeasurement{c(11), c(0), c(4), c(7), model.actuators ? xs(ac::kDe) : held.de};
   };
   std::optional<Autopilot> ap;
   ApCommand cmd{};
   ApOutput ap_out{};
   if (s.autopilot) {
     model.wind.constant_N = constant_wind_at(s, 0.0);
-    const ApMeasurement m0 = measure(0.0, x);
+    const ApMeasurement m0 = measure(0.0, x, out.u_trim);
     ap.emplace(s.autopilot->gains, s.autopilot->antiwindup);
     ap->engage(m0, out.u_trim);  // bumpless: the first sample outputs exactly the trim command
     cmd = {m0.h, m0.V};
@@ -101,7 +102,7 @@ AircraftRunOutput run_aircraft(const AircraftScenario& s) {
               (c.kind == Command::Altitude ? cmd.h : cmd.V) = c.value;
             }
           }
-          ap_out = ap->update(measure(t, x), cmd);
+          ap_out = ap->update(measure(t, x, u), cmd);
         }
         u = ap_out.u;
         if (last_recorded) {  // the sample at t carries the command applied over the step that starts there
