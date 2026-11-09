@@ -320,14 +320,29 @@ def regenerate_jsbsim(dest):
         run_jsbsim.main([*argv, "--out", str(dest / f"{name}.csv")])
 
 
+# Physical floor for each column's scale. A column whose peak is below its floor carries no response: in the
+# symmetric cases the lateral channels sit at round-off (~1e-15), which differs between platforms' libm.
+# Relative-to-peak would turn that noise into O(1) "differences". Floors are far below any excited J3 peak.
+CSV_FLOOR = {"ft": 1e-3, "fps": 1e-6, "deg": 1e-6, "dps": 1e-6}
+
+
+def _floor(col):
+    return next((v for suffix, v in CSV_FLOOR.items() if col.endswith("_" + suffix)), 1e-9)
+
+
 def csv_matches(a, b):
-    """Regenerated vs committed CSV: same columns, every element within CSV_REL of the column's peak magnitude."""
+    """Regenerated vs committed CSV: same columns; every element within CSV_REL of max(column peak, physical floor).
+
+    Angles are compared modulo 360 deg (psi wraps)."""
     ca, cb = read_csv(a), read_csv(b)
     assert ca.keys() == cb.keys(), f"{a.name}: columns differ"
     bad = []
     for k in ca:
-        scale = max(np.abs(cb[k]).max(), 1e-12)
-        err = float(np.abs(ca[k] - cb[k]).max() / scale)
+        diff = ca[k] - cb[k]
+        if k.endswith("_deg"):
+            diff = (diff + 180.0) % 360.0 - 180.0
+        scale = max(np.abs(cb[k]).max(), _floor(k))
+        err = float(np.abs(diff).max() / scale)
         if not err <= CSV_REL:
             bad.append((k, err))
     return bad

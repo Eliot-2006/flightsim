@@ -97,10 +97,14 @@ target_compile_definitions(validation_tests PRIVATE FLIGHTSIM_SOURCE_DIR="${CMAK
 gtest_discover_tests(validation_tests PROPERTIES LABELS validation)
 
 # Own executable: it replaces global operator new to count allocations.
-add_executable(alloc_tests tests/alloc/test_no_alloc.cpp)
-target_link_libraries(alloc_tests PRIVATE flightsim_core GTest::gtest_main)
-flightsim_target_options(alloc_tests)
-gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
+# The allocation counter replaces global operator new/delete, which conflicts with the sanitizer allocator
+# (ASan reports alloc-dealloc-mismatch). It runs in every non-sanitizer build.
+if(NOT FLIGHTSIM_SANITIZE)
+  add_executable(alloc_tests tests/alloc/test_no_alloc.cpp)
+  target_link_libraries(alloc_tests PRIVATE flightsim_core GTest::gtest_main)
+  flightsim_target_options(alloc_tests)
+  gtest_discover_tests(alloc_tests PROPERTIES LABELS unit)
+endif()
 
 add_executable(bench_flightsim bench/bench_integrators.cpp)
 target_link_libraries(bench_flightsim PRIVATE flightsim_core benchmark::benchmark)

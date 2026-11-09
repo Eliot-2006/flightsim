@@ -23,9 +23,7 @@ std::string scenario_text(const std::string& sim_extra, const std::string& extra
 }
 sim::AircraftScenario load(const std::string& text) {
   const auto path = std::filesystem::temp_directory_path() / "flightsim_test_aircraft.toml";
-  {
-    std::ofstream(path) << text;
-  }
+  { std::ofstream(path) << text; }
   return sim::load_aircraft_scenario(path);
 }
 }  // namespace
