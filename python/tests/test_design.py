@@ -40,3 +40,24 @@ def test_reproducible_outputs(tmp_path):
         assert response["step_si"] == command  # Exact ft→m conversion at the reporting boundary.
         assert len(response["time_s"]) == len(response["altitude_m"])
         assert np.isfinite(response["airspeed_mps"]).all()
+
+
+def test_linear_c1_headroom():
+    gains = tomllib.loads(design.GAINS.read_text())
+    response = design.step_predictions(design.load_plant(), gains)["C1"]
+    time = np.array(response["time_s"])
+    altitude = np.array(response["altitude_m"])
+    speed = np.array(response["airspeed_mps"])
+    step = response["step_si"]
+    # Orchestrator headroom: 8% overshoot, 20 s settling, 4 ft/s speed excursion.
+    assert max(altitude) <= 1.08 * step
+    assert np.all(np.abs(altitude[time >= 20] - step) <= .02 * step)
+    assert max(np.abs(speed)) <= 4 * .3048
+
+
+def test_linear_c3_headroom():
+    gains = tomllib.loads(design.GAINS.read_text())
+    response = design.step_predictions(design.load_plant(), gains)["C3"]
+    # Orchestrator headroom: 8% overshoot, 15 ft altitude excursion.
+    assert max(response["airspeed_mps"]) <= 1.08 * response["step_si"]
+    assert max(np.abs(response["altitude_m"])) <= 15 * .3048

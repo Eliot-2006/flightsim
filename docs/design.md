@@ -325,7 +325,7 @@ For sample period T, error e = r − y, and stored integral I, the normal update
 `u_sat = clamp(u, umin, umax)`, and
 `I_k = I* + T (u_sat − u)/tt` when anti-windup is enabled (otherwise I_k = I*).
 Thus integration and back-calculation use forward Euler; the tracking update
-requires T < 2 tt for stability. Every generated tt exceeds T by at least 6.6×.
+requires T < 2 tt for stability. Every generated tt exceeds T by at least 6.25×.
 Derivative action is on measurement, with its first measurement establishing
 history, so a setpoint step cannot kick D. Gains/limits and runtime inputs must
 be finite, tf ≥ 0, tt > 0, dt > 0, and umin ≤ umax; invalid inputs throw.
@@ -374,39 +374,74 @@ controller limit, not an inferred aircraft envelope.
 ### M7a: loop choices and C5 margins
 
 Pitch rate feeds back q (rad/s) through a **PI** to elevator (rad). The negative
-control sign follows S&L's nose-down positive elevator. A PI zero at 0.5 rad/s
-adds low-frequency tracking authority without derivative noise amplification;
-the gain is normalized at 7.5 rad/s, well below the actuator's 20.2 rad/s pole
-and the controller Nyquist frequency. With all other loops closed, the final
-crossover is **7.62657 rad/s**, gain-increase margin **21.6595 dB**,
-gain-reduction margin **23.1539 dB**, and phase margin **55.8530°**.
+control sign follows S&L's nose-down positive elevator. A zero at 0.2 rad/s
+provides low-frequency tracking while retaining phase at the 8 rad/s design
+frequency, below the actuator's 20.2 rad/s pole. With all other loops and the
+cross-feed closed, crossover is **8.22421 rad/s**, gain-increase margin
+**20.8791 dB**, gain-reduction margin **28.0552 dB**, and phase margin
+**52.7995°**.
 
 Pitch feeds back theta (rad) through **P** to q_cmd (rad/s). The theta kinematic
 integrator already provides steady pitch tracking; another controller integrator
-would add avoidable phase lag. Normalize at 1.5 rad/s after closing the rate
-loop. Final crossover is **1.36283 rad/s**, gain-increase margin **20.7306 dB**,
-gain-reduction margin **41.4333 dB**, and phase margin **73.6909°**.
+would add avoidable phase lag. Normalize at 2 rad/s after closing the rate loop.
+Final crossover is **1.90694 rad/s**, gain-increase margin **18.1372 dB**,
+gain-reduction margin **50.0779 dB**, and phase margin **74.4851°**. Its reference
+includes the measured-airspeed trim correction described below.
 
-Altitude feeds back h (m, up) through **PI** to theta_cmd (rad). The slow integral
-zero at 0.01 rad/s removes steady altitude error while leaving the proportional
-path to govern the transient; the ±15° pitch bound belongs to this controller.
-Normalize at 0.3 rad/s after closing both inner loops. Final crossover is
-**0.296255 rad/s**, gain-increase margin **16.4877 dB**, and phase margin
-**59.3416°**. No finite lower-gain boundary was found. Measured nested-loop
-separations are **5.60×** and **4.60×**, exceeding the required minimum 3×.
+Altitude feeds back h (m, up) through **PI** to theta_cmd (rad). Normalize at
+0.25 rad/s after closing the inner loops. A zero at 0.005 rad/s supplies steady
+altitude correction without a large integral overshoot; the small slow-pole
+residue now lies inside the 2% settling band. Final crossover is
+**0.251709 rad/s**, gain-increase margin **20.3648 dB**, and phase margin
+**65.0182°**. No finite lower-gain boundary was found. Actual nested-loop
+separations are **4.31×** and **7.58×**, both above the required 3× minimum.
+The combined pitch reference, including cross-feed, must be limited to ±15°.
 
-Airspeed feeds back air-relative V (m/s) through **PI** to throttle. Its zero at
-0.01 rad/s supplies steady drag/thrust balance with a slower crossover than
-altitude, limiting competition for longitudinal energy. Normalize at 0.12 rad/s
-with the complete altitude cascade closed and engine lag retained. Final
-crossover is **0.120000 rad/s**, gain-increase margin **58.1909 dB**, and phase
-margin **80.2707°**. No finite lower-gain boundary was found.
+Airspeed feeds back air-relative V (m/s) through **PI** to throttle. Normalize at
+0.4 rad/s with the altitude cascade closed; the 0.01 rad/s zero gives steady
+thrust/drag balance while retaining phase through engine lag. The faster speed
+loop limits C1's speed excursion, and the trim-pitch cross-feed prevents that
+faster acceleration from lifting the aircraft away from its altitude command.
+Final crossover is **0.400000 rad/s**, gain-increase margin **47.3144 dB**,
+and phase margin **66.7198°**. No finite lower-gain boundary was found.
+
+### M7a: why one cross-feed is needed
+
+The plain cascade couples a speed change into altitude because the required
+level-flight trim alpha (and hence theta) falls as speed increases. Increasing
+altitude-loop gain to reject that lift transient worsens altitude-step overshoot;
+increasing its integral zero removes the tail but further increases overshoot.
+A deterministic differential-evolution exploration of the delayed linear model
+(seed 71, 140-member population, up to 250 generations) searched the four
+normalization frequencies and three PI zeros. Frequency bounds in rad/s were
+q [2,20], pitch [0.2,8], h [0.05,1.5], V [0.03,3]; zero bounds were q [1e-5,20],
+h [1e-6,2], V [1e-6,2]. The objective minimized the largest normalized C1/C3
+headroom violation with penalties for C5 or separation violations. No feasible
+plain-cascade candidate was found: its best compromise still had **9.67% C1
+overshoot, 4.83 ft/s speed excursion, and 18.12 ft C3 altitude excursion**,
+approximately 1.21 times the requested bounds. This is numerical design evidence,
+not a proof of global infeasibility. The much simpler static trim correction
+below resolves the coupling without another dynamic controller.
+
+Use exactly one cross-feed, from **measured airspeed** to the pitch reference:
+`theta_cmd = clamp(theta_altitude_PI + k_V (V − V_trim), −15°, +15°)`.
+Compute k_V from the CLI model's static trim differential: solve
+`A delta_x + B[:,(elevator,throttle)] delta_u = 0`, with delta_V = 1 m/s and
+delta_h = 0. The h-dot constraint enforces level flight; the power and actuator
+states enforce their equilibria. The solution gives
+**k_V = d theta_trim/d V = −0.001094945016 rad/(m/s)**, with
+**V_trim = 153.0096 m/s**. No fitted compensation or nonlinear trial is used.
+Measured speed rather than the stepped speed command avoids an immediate pitch
+kick before the aircraft accelerates. No altitude-to-throttle feed-forward is
+needed. The cross-feed adds no state, and is included when breaking each loop.
+For runner integration, the ±15° bound applies to the **combined** command;
+anti-windup tracking must account for that final bound, including the cross-feed.
 
 Synthesis proceeds inner to outer by setting each PI zero and solving the gain
 from the return-ratio magnitude at its chosen frequency. Future loops are open
 during that loop's synthesis. Final assessment breaks **one error channel at a
 time with every other loop closed**, including the airspeed/altitude cross
-coupling. The full longitudinal closed-loop poles must all lie strictly in the
+coupling and measured-speed trim correction. The full longitudinal closed-loop poles must all lie strictly in the
 left half plane. Every loop meets C5 (GM ≥ 6 dB, PM ≥ 45°), with an additional
 ≥6 dB reserve toward any lower-gain stability boundary. Because nested loops
 can have both increasing- and decreasing-gain instability, `margins.json`
@@ -424,8 +459,8 @@ use ten significant digits to remove insignificant compiler roundoff; the
 assessment and predictions consume those serialized values. Reruns produce
 identical gains, margins and step JSON without timestamps or random choices.
 
-The committed artifact is `scenarios/autopilot_gains.toml` (all four seven-field
-PidGains tables plus rate_hz). Derivative gains are zero; tf = T = 0.02 s is
+The committed artifact is `scenarios/control/autopilot_gains.toml` (all four seven-field
+PidGains tables, rate_hz, and the two crossfeed constants). Derivative gains are zero; tf = T = 0.02 s is
 recorded for each controller and has no effect with kd = 0. Tracking tt = 1/wc
 sets recovery on each loop's nominal response time. Generated
 `build/control_design/margins.json` contains the margin report and
@@ -435,9 +470,20 @@ C3 (+50 ft/s = 15.24 m/s) responses on a 0.1 s grid through 300 s. These are
 absolute overlays, and shift time to the runner's command event. No nonlinear
 run is used in design or acceptance tests.
 
-C5 is this task's acceptance gate. The linear forecasts do **not** establish
-C1–C4: C1 predicts 9.28% overshoot, 50.4 s 2% settling (target 25 s), and
-5.24 ft/s peak speed deviation (target 5); C3 predicts 3.75% speed overshoot
-and 22.41 ft peak altitude deviation (target 20). These misses are handed to
-Task 7.2 explicitly; the committed gains are a reproducible margin-qualified
-baseline, not a claim that nonlinear performance targets already pass.
+The final delayed linear predictions meet the orchestrator's headroom targets:
+
+| Case | Metric | Prediction | Linear design target |
+|---|---|---:|---:|
+| C1 +100 ft | Altitude overshoot | 4.3021% | ≤8% |
+| C1 | 2% settling | 16.3 s | ≤20 s |
+| C1 | Peak absolute speed excursion | 2.9582 ft/s | ≤4 ft/s |
+| C3 +50 ft/s | Speed overshoot | 4.2835% | ≤8% |
+| C3 | Peak absolute altitude excursion | 4.1807 ft | ≤15 ft |
+
+C3 also settles within 2% in 11.0 s. The previous 50.4 s C1 tail is removed
+from the settling band; no known linear target miss is deferred to Task 7.2.
+`generate()` refuses to emit a design that fails these targets, C5, pole
+stability, or bandwidth separation. Tests independently check the predicted
+traces against the specified bounds as well as reproducibility. Nonlinear
+verification, rate/position saturation and exact sampled-system behavior remain
+Task 7.2 checks; these linear results do not claim those checks have passed.
